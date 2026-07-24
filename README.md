@@ -28,7 +28,10 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 | `[HorizontalGroup("name")]` | Horizontal layout group |
 | `[EnumToggleButtons]` | Enum as toggle button row (supports Flags) |
 | `[ValueDropdown("method")]` | Dropdown populated by method (supports `@` expression syntax) |
+| `[ValueDropdown("method", AppendNextDrawer = true)]` | Draw original field + dropdown button side by side |
 | `[OnValueChanged("method")]` | Call method when field value changes |
+| `[OnCollectionChanged("method")]` | Call method when collection size changes |
+| `[OnStateUpdate("method")]` | Call method every frame while drawing |
 | `[Button("name")]` | Draw a button that invokes a method |
 | `[Button("name", ButtonSizes.Large)]` | Button with size (Small/Medium/Large/Gigantic) |
 | `[TableList]` | Render List/Array as a table with column headers, grid lines, and draggable column widths |
@@ -53,6 +56,33 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 ```
 
 Supported operators: `!`, `&&`, `||`, `==`, `!=`, `()`, and member names (bool fields/properties/methods).
+
+### Unified Collection Drawing
+
+All collection types (List, Array, Dictionary, TableList, ValueDropdown arrays) share a unified box+grid visual style:
+
+- **Box container** with subtle background
+- **Toolbar title bar** with foldout toggle, count label, and `+`/`-` size controls
+- **Grid layout** with alternating row colors, index column, and per-row delete buttons
+- **Draggable column widths** (TableList only) — drag column borders to resize
+- **Performance limiting** — collections with more than 50 items show a "Show All" button instead of rendering everything
+- **Indent-safe layout** — title bar correctly aligns foldout, count, and buttons regardless of nesting depth
+
+#### ValueDropdown Arrays
+
+```csharp
+// Standard dropdown — replaces the field with a popup
+[ValueDropdown(nameof(GetOptions))]
+public int selected;
+
+// Append mode — draws the original field + a ▼ dropdown button
+[ValueDropdown(nameof(GetOptions), AppendNextDrawer = true)]
+public int valueWithDropdown;
+
+// Works on arrays/lists too — each element gets its own dropdown
+[ValueDropdown(nameof(GetOptions))]
+public List<int> dropdownList;
+```
 
 ### Unified Group System
 
@@ -83,6 +113,9 @@ public float speed;
 - **Port groups** via `[PortGroup(n)]` for connection filtering
 - **Procedural rendering** — no external textures or GUISkin assets required
 - **Adaptive node width** — automatically widens based on group nesting depth and table/dictionary content
+- **Adaptive label width** — Title:Content = 4:6 ratio with minimum width, adapts to panel width
+- **Bidirectional edge animation** — output→input (OnExit) and input→output (OnEnter) with ping/animation
+- **Collapsed group ports** — external ports displayed on collapsed group boundary with custom labels
 
 ### TaoTieEditorWindow
 
@@ -97,7 +130,6 @@ var window = TaoTieEditorWindow.Open(myObject);
 - Supports any `UnityEngine.Object`
 - Drag-and-drop to inspect
 - Follows editor selection
-
 
 ### Drawing Pipeline
 
@@ -138,6 +170,19 @@ Or add it via `manifest.json`:
 "com.taotie.inspector": "https://github.com/526077247/TaoTieInspector.git"
 ```
 
+## Samples
+
+Import the example package via Package Manager:
+
+1. Open `Window > Package Manager`
+2. Select `TaoTie Inspector`
+3. Click `Samples > Import` to import the Example sample
+
+The sample includes:
+- `TaoTieInspectorTest` — MonoBehaviour demonstrating all attributes
+- `ExampleNode` / `ExampleGraph` — Node graph example with custom node view
+- `TaoTieInspectorObject` — Plain C# object with attribute examples
+
 ## Usage
 
 ### Basic Attributes
@@ -147,24 +192,47 @@ using TaoTie.Inspector;
 
 public class PlayerConfig : MonoBehaviour
 {
-    [LabelText("玩家名称")]
+    [LabelText("Player Name")]
     public string playerName;
 
     [PropertyRange(1, 99)]
-    [LabelText("等级")]
+    [LabelText("Level")]
     public int level = 1;
 
     [ShowIf("@level > 10")]
-    [LabelText("高级技能")]
+    [LabelText("Advanced Skill")]
     public string advancedSkill;
 
     [FoldoutGroup("Combat")]
     [BoxGroup("Combat/Stats")]
-    [LabelText("攻击力")]
+    [LabelText("Attack")]
     public float attack;
 
-    [Button("重置")]
+    [Button("Reset")]
     private void Reset() { level = 1; }
+}
+```
+
+### ValueDropdown
+
+```csharp
+public class SkillConfig : MonoBehaviour
+{
+    [ValueDropdown(nameof(GetSkillIds))]
+    public int selectedSkillId;
+
+    [ValueDropdown(nameof(GetSkillIds), AppendNextDrawer = true)]
+    public int skillWithDropdown;
+
+    [ValueDropdown(nameof(GetSkillIds))]
+    public List<int> skillIdList;
+
+    public static IEnumerable<ValueDropdownItem> GetSkillIds()
+    {
+        yield return new ValueDropdownItem("Fire Ball", 1001);
+        yield return new ValueDropdownItem("Ice Nova", 1002);
+        yield return new ValueDropdownItem("Heal", 1003);
+    }
 }
 ```
 
@@ -174,7 +242,7 @@ public class PlayerConfig : MonoBehaviour
 [NodeViewType(typeof(MyNodeView))]
 public class MyNode : NodeBase
 {
-    [LabelText("名称")]
+    [LabelText("Name")]
     public string nodeName;
 
     [ShowIf("isAdvanced")]
@@ -182,7 +250,7 @@ public class MyNode : NodeBase
 
     public bool isAdvanced = false;
 
-    [Button("执行")]
+    [Button("Execute")]
     public void Execute() { /* ... */ }
 
     public override void AddDefaultPorts()
