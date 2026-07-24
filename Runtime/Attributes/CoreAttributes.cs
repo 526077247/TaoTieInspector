@@ -6,11 +6,11 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class LabelTextAttribute : PropertyAttribute
     {
-        public string Label { get; }
+        public string Text { get; }
 
-        public LabelTextAttribute(string label)
+        public LabelTextAttribute(string text)
         {
-            Label = label;
+            Text = text;
         }
     }
 

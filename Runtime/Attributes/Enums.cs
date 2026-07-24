@@ -30,17 +30,4 @@ namespace TaoTie.Inspector
         Large,
         Gigantic
     }
-
-    [Serializable]
-    public struct ValueDropdownItem
-    {
-        public string Text;
-        public object Value;
-
-        public ValueDropdownItem(string text, object value)
-        {
-            Text = text;
-            Value = value;
-        }
-    }
 }

@@ -16,7 +16,7 @@ namespace TaoTie.Inspector.Editor
         {
             if (type == null) return "null";
             var attr = type.GetCustomAttributes(typeof(LabelTextAttribute), false);
-            return attr.Length > 0 ? ((LabelTextAttribute)attr[0]).Label : type.Name;
+            return attr.Length > 0 ? ((LabelTextAttribute)attr[0]).Text : type.Name;
         }
 
         /// <summary>Get member display name: LabelText if present, otherwise NicifyVariableName.</summary>
@@ -24,7 +24,7 @@ namespace TaoTie.Inspector.Editor
         {
             if (member == null) return "";
             var attr = member.GetCustomAttributes(typeof(LabelTextAttribute), true);
-            return attr.Length > 0 ? ((LabelTextAttribute)attr[0]).Label : ObjectNames.NicifyVariableName(member.Name);
+            return attr.Length > 0 ? ((LabelTextAttribute)attr[0]).Text : ObjectNames.NicifyVariableName(member.Name);
         }
 
         /// <summary>Get member label as GUIContent with tooltip.</summary>

@@ -29,7 +29,9 @@ namespace TaoTie.Inspector.Editor
             {
                 System.Type targetType = target.GetType();
                 bool hasDrawWithUnity = targetType.IsDefined(typeof(DrawWithUnityAttribute), true);
-                useEnhancedDrawing = !hasDrawWithUnity && TaoTiePropertyProcessor.HasAnyTaoTieAttributes(targetType);
+                bool forceEnhanced = typeof(IForceTaoTieDrawing).IsAssignableFrom(targetType);
+                useEnhancedDrawing = !hasDrawWithUnity &&
+                    (forceEnhanced || TaoTiePropertyProcessor.HasAnyTaoTieAttributes(targetType));
             }
             else
             {
@@ -203,7 +205,7 @@ namespace TaoTie.Inspector.Editor
                         PropertyPath = field.Name,
                         PropertyName = field.Name,
                         Order = defaultOrder,
-                        LabelOverride = field.GetCustomAttribute<LabelTextAttribute>()?.Label,
+                        LabelOverride = field.GetCustomAttribute<LabelTextAttribute>()?.Text,
                         TooltipText = field.GetCustomAttribute<TooltipAttribute>()?.tooltip,
                         FoldoutGroup = field.GetCustomAttribute<FoldoutGroupAttribute>(),
                         BoxGroup = field.GetCustomAttribute<BoxGroupAttribute>(),

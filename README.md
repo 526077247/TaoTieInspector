@@ -117,6 +117,39 @@ public float speed;
 - **Bidirectional edge animation** — output→input (OnExit) and input→output (OnEnter) with ping/animation
 - **Collapsed group ports** — external ports displayed on collapsed group boundary with custom labels
 
+### Serialized Base Classes
+
+TaoTie Inspector provides Odin-compatible base classes that force enhanced drawing without requiring any attributes on your fields. Simply inherit from these classes to get Dictionary editing, unified groups, collection drawing, and all other TaoTie features automatically.
+
+| Class | Odin Equivalent | Base Class |
+|---|---|---|
+| `SerializedScriptableObject` | `OdinSerializedScriptableObject` | `ScriptableObject` |
+| `SerializedMonoBehaviour` | `OdinSerializedMonoBehaviour` | `MonoBehaviour` |
+| `SerializedStateMachineBehaviour` | `OdinSerializedStateMachineBehaviour` | `StateMachineBehaviour` |
+
+```csharp
+using TaoTie.Inspector;
+
+// Inherit from SerializedScriptableObject — Dictionary and collections
+// are automatically editable in the Inspector without any attributes
+public class ItemDatabase : SerializedScriptableObject
+{
+    public Dictionary<string, ItemData> items;
+    public List<ItemData> itemList;
+
+    [LabelText("Version")]
+    public string version;
+
+    protected override void OnAfterDeserialize()
+    {
+        // Called after the Inspector applies modifications
+        Debug.Log("Database updated");
+    }
+}
+```
+
+> **Tip:** You can also implement `IForceTaoTieDrawing` on any custom type to force enhanced drawing without inheriting from a specific base class.
+
 ### TaoTieEditorWindow
 
 An `OdinEditorWindow`-equivalent inspector window:

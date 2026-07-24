@@ -2073,7 +2073,7 @@ namespace TaoTie.Inspector.Editor
             if (member.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute labelTextAttribute)
             {
                 rename = true;
-                return labelTextAttribute.Label;
+                return labelTextAttribute.Text;
             }
 
             rename = false;
@@ -2108,7 +2108,7 @@ namespace TaoTie.Inspector.Editor
 
             string tip = GetCachedAttr<TooltipAttribute>(member) is TooltipAttribute tooltipAttr ? tooltipAttr.tooltip : null;
             string showname = GetCachedAttr<LabelTextAttribute>(member) is LabelTextAttribute labelTextAttr
-                ? labelTextAttr.Label
+                ? labelTextAttr.Text
                 : ObjectNames.NicifyVariableName(member.Name);
             if (!string.IsNullOrEmpty(tip))
                 showname = "*" + showname;
@@ -2119,7 +2119,7 @@ namespace TaoTie.Inspector.Editor
         {
             if (type.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute labelTextAttribute)
             {
-                return labelTextAttribute.Label;
+                return labelTextAttribute.Text;
             }
 
             return ObjectNames.NicifyVariableName(type.Name);
@@ -2136,7 +2136,7 @@ namespace TaoTie.Inspector.Editor
             string showname = null;
             if (type.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute labelTextAttribute)
             {
-                showname = labelTextAttribute.Label;
+                showname = labelTextAttribute.Text;
             }
             else
             {
@@ -2469,15 +2469,26 @@ namespace TaoTie.Inspector.Editor
                             }
                             else
                             {
-                                if (item is Type itemType &&
-                                    itemType.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute
+                                // Handle ValueDropdownItem<T> via reflection
+                                var itemType = item?.GetType();
+                                if (itemType != null && itemType.IsGenericType &&
+                                    itemType.GetGenericTypeDefinition() == typeof(ValueDropdownItem<>))
+                                {
+                                    var textField = itemType.GetField("Text");
+                                    var valueField = itemType.GetField("Value");
+                                    temp.Add(new ValueDropdownItem(
+                                        textField?.GetValue(item)?.ToString() ?? "",
+                                        valueField?.GetValue(item)));
+                                }
+                                else if (item is Type typ &&
+                                    typ.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute
                                         labelTextAttribute)
                                 {
-                                    temp.Add(new ValueDropdownItem(labelTextAttribute.Label, item));
+                                    temp.Add(new ValueDropdownItem(labelTextAttribute.Text, item));
                                 }
                                 else
                                 {
-                                    temp.Add(new ValueDropdownItem(item.ToString(), item));
+                                    temp.Add(new ValueDropdownItem(item?.ToString() ?? "null", item));
                                 }
                             }
                         }

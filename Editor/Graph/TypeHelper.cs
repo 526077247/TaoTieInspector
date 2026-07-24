@@ -64,7 +64,7 @@ namespace TaoTie.Inspector.Editor
             {
                 if (res[i].GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute labelTextAttribute)
                 {
-                    names[i] = labelTextAttribute.Label;
+                    names[i] = labelTextAttribute.Text;
                 }
                 else
                 {

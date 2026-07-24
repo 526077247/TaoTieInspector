@@ -344,7 +344,7 @@ namespace TaoTie.Inspector.Editor
             if (field == null) return entry;
             entry.DeclaringType = field.DeclaringType;
 
-            entry.LabelOverride = GetFirstAttr<LabelTextAttribute>(field)?.Label;
+            entry.LabelOverride = GetFirstAttr<LabelTextAttribute>(field)?.Text;
             entry.TooltipText = GetFirstAttr<TooltipAttribute>(field)?.tooltip;
             entry.ShowIf = GetFirstAttr<ShowIfAttribute>(field);
             entry.HideIf = GetFirstAttr<HideIfAttribute>(field);

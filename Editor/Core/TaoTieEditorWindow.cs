@@ -192,7 +192,7 @@ namespace TaoTie.Inspector.Editor
             }
         }
 
-        private void OnDestroy()
+        protected virtual void OnDestroy()
         {
             if (cachedEditor != null)
                 DestroyImmediate(cachedEditor);

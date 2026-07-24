@@ -316,6 +316,32 @@ namespace TaoTie.Inspector.Editor
                 items.Add(new ValueDropdownItem(result.ToString(), result));
             }
 
+            // If no items found via direct type matching, try reflection-based conversion
+            // for ValueDropdownItem<T> and ValueDropdownList<T>
+            if (items.Count == 0 && result != null)
+            {
+                var resultType = result.GetType();
+                if (resultType.IsGenericType)
+                {
+                    var genericDef = resultType.GetGenericTypeDefinition();
+                    if (genericDef == typeof(ValueDropdownList<>) || genericDef == typeof(List<>))
+                    {
+                        var itemType = resultType.GetGenericArguments()[0];
+                        if (itemType.IsGenericType && itemType.GetGenericTypeDefinition() == typeof(ValueDropdownItem<>))
+                        {
+                            foreach (var item in (IEnumerable)result)
+                            {
+                                var textProp = itemType.GetField("Text");
+                                var valueProp = itemType.GetField("Value");
+                                items.Add(new ValueDropdownItem(
+                                    textProp?.GetValue(item)?.ToString() ?? "",
+                                    valueProp?.GetValue(item)));
+                            }
+                        }
+                    }
+                }
+            }
+
             return items;
         }
 

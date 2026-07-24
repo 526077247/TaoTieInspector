@@ -74,7 +74,7 @@ namespace TaoTie.Inspector.Editor
         {
             var prop = new TaoTieReflectionProperty { FieldInfo = field };
 
-            prop.LabelOverride = field.GetCustomAttribute<LabelTextAttribute>()?.Label;
+            prop.LabelOverride = field.GetCustomAttribute<LabelTextAttribute>()?.Text;
             prop.ShowIf = field.GetCustomAttribute<ShowIfAttribute>();
             prop.HideIf = field.GetCustomAttribute<HideIfAttribute>();
             prop.EnableIf = field.GetCustomAttribute<EnableIfAttribute>();
