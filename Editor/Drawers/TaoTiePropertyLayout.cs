@@ -413,6 +413,14 @@ namespace TaoTie.Inspector.Editor
                 {
                     changed = DrawArrayBox(entry);
                 }
+                // HideReferenceObjectPicker only applies to ManagedReference, not ObjectReference
+                else if (entry.HideReferenceObjectPicker != null && entry.Property.propertyType == SerializedPropertyType.ManagedReference)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    EditorGUILayout.PropertyField(entry.Property, GetLabel(entry), false);
+                    if (EditorGUI.EndChangeCheck())
+                        changed = true;
+                }
                 else
                 {
                     // Track array size before to detect real collection changes (not foldout toggles)
@@ -891,6 +899,117 @@ namespace TaoTie.Inspector.Editor
         /// <summary>
         /// Resolve a FieldInfo from a property path (e.g. "obj.field") on the root target.
         /// </summary>
+        /// <summary>
+        /// Draw array/list with HideReferenceObjectPicker — manual foldout + elements
+        /// without Unity's object picker dropdown on each element.
+        /// </summary>
+        private static bool DrawArrayNoPicker(TaoTiePropertyEntry entry)
+        {
+            var prop = entry.Property;
+            bool changed = false;
+            int arraySizeBefore = prop.arraySize;
+            var label = GetLabel(entry);
+            string title = label?.text ?? prop.displayName;
+
+            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            EditorGUILayout.BeginVertical(boxStyle);
+
+            // Foldout title bar
+            string foldKey = "TaoTie_Fold_NoPicker_" + entry.PropertyPath;
+            bool foldout = SessionState.GetBool(foldKey, false);
+            int oldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            Rect titleBarRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            EditorGUI.DrawRect(titleBarRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
+            float tbX = titleBarRect.x + 14f;
+            float minusX = titleBarRect.xMax - 24f - 2f;
+            float plusX = minusX - 24f - 2f;
+            string countText = $"({prop.arraySize})";
+            var countContent = new GUIContent(countText);
+            float countW = EditorStyles.miniLabel.CalcSize(countContent).x + 8f;
+            Rect countRect = new Rect(plusX - countW - 4f, titleBarRect.y, countW, titleBarRect.height);
+            Rect foldRect = new Rect(tbX, titleBarRect.y, countRect.x - tbX - 4f, titleBarRect.height);
+            foldout = EditorGUI.Foldout(foldRect, foldout, new GUIContent(title), true);
+            SessionState.SetBool(foldKey, foldout);
+            EditorGUI.LabelField(countRect, countContent, EditorStyles.miniLabel);
+            if (GUI.Button(new Rect(plusX, titleBarRect.y, 24f, titleBarRect.height), "+", EditorStyles.toolbarButton))
+            {
+                prop.arraySize++;
+                changed = true;
+            }
+            if (GUI.Button(new Rect(minusX, titleBarRect.y, 24f, titleBarRect.height), "-", EditorStyles.toolbarButton))
+            {
+                if (prop.arraySize > 0) { prop.arraySize--; changed = true; }
+            }
+            EditorGUI.indentLevel = oldIndent;
+
+            if (foldout)
+            {
+                for (int i = 0; i < prop.arraySize; i++)
+                {
+                    var element = prop.GetArrayElementAtIndex(i);
+                    var rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight + 2f);
+                    if (i % 2 == 1)
+                        EditorGUI.DrawRect(rowRect, new Color(0.5f, 0.5f, 0.5f, 0.1f));
+
+                    float x = rowRect.x;
+                    EditorGUI.LabelField(new Rect(x, rowRect.y, 28f, rowRect.height), i.ToString());
+                    x += 28f;
+
+                    // Draw ObjectField without picker — resolve element type from field info
+                    Rect fieldRect = new Rect(x, rowRect.y, rowRect.width - 28f - 22f - 2f, rowRect.height);
+                    Type objType = typeof(UnityEngine.Object);
+                    var fieldInfo = ResolveFieldFromPath(entry, entry.PropertyPath);
+                    if (fieldInfo != null && fieldInfo.FieldType.IsArray)
+                        objType = fieldInfo.FieldType.GetElementType();
+                    else if (fieldInfo != null && fieldInfo.FieldType.IsGenericType)
+                        objType = fieldInfo.FieldType.GetGenericArguments()[0];
+                    EditorGUI.BeginChangeCheck();
+                    var newObj = EditorGUI.ObjectField(fieldRect, GUIContent.none,
+                        element.objectReferenceValue, objType, true);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        element.objectReferenceValue = newObj;
+                        changed = true;
+                    }
+
+                    // Delete button
+                    Rect delRect = new Rect(rowRect.xMax - 22f - 2f, rowRect.y, 22f, rowRect.height);
+                    if (GUI.Button(delRect, "×"))
+                    {
+                        prop.DeleteArrayElementAtIndex(i);
+                        changed = true;
+                        break;
+                    }
+
+                    EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.yMax - 1, rowRect.width, 1),
+                        new Color(0.3f, 0.3f, 0.3f, 0.3f));
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(2);
+
+            if (changed && prop.arraySize != arraySizeBefore)
+            {
+                if (entry.OnCollectionChanged != null)
+                    _pendingCollectionChangedCallbacks.Add((entry, null));
+            }
+
+            return changed;
+        }
+
+        private static FieldInfo ResolveFieldFromPath(TaoTiePropertyEntry entry, string propertyPath)
+        {
+            // Use the entry's ReflectionField if available, else resolve from serialized object
+            if (entry.ReflectionField != null)
+                return entry.ReflectionField;
+            // Fallback: try to resolve from the property path on the target type
+            if (entry.Property != null && entry.Property.serializedObject != null)
+                return ResolveFieldFromPath(entry.Property.serializedObject.targetObject, propertyPath);
+            return null;
+        }
+
         private static FieldInfo ResolveFieldFromPath(object rootTarget, string propertyPath)
         {
             if (string.IsNullOrEmpty(propertyPath)) return null;

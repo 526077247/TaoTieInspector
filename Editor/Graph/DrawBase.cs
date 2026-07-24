@@ -1704,7 +1704,14 @@ namespace TaoTie.Inspector.Editor
                 return;
             }
             
-            if (valueDropdown.TryGetValue(field, out var list))
+            // Always ensure cache is populated before layout to avoid GUILayout mismatch
+            if (!valueDropdown.TryGetValue(field, out var list))
+            {
+                RefreshValueDropDown(field, obj, valueDropdownAttribute.MemberName);
+                valueDropdown.TryGetValue(field, out list);
+            }
+
+            if (list != null)
             {
                 int index = -1;
                 for (int i = 0; i < list.Length; i++)
@@ -1741,30 +1748,10 @@ namespace TaoTie.Inspector.Editor
             }
             else
             {
-                RefreshValueDropDown(field, obj, valueDropdownAttribute.MemberName);
+                // Cache still empty — draw same layout as main path to avoid GUILayout mismatch
                 EditorGUILayout.BeginHorizontal();
-                object newValue = value;
-                if (!DrawNormalField(fieldType, 
-                        type == ValueDropdownFieldType.Normal? GetShowName(field, value):new GUIContent(aIndex.ToString()), 
-                        ref newValue, true, field))
-                {
-                    EditorGUILayout.LabelField(showText);
-                }
-                else if (!IsEqual(newValue, value))
-                {
-                    switch (type)
-                    {
-                        case ValueDropdownFieldType.Normal:
-                            field.SetValue(obj, newValue);
-                            break;
-                        case ValueDropdownFieldType.IList:
-                            iList[aIndex] = newValue;
-                            break;
-                        case ValueDropdownFieldType.Array:
-                            array.SetValue(newValue,aIndex);
-                            break;
-                    }
-                }
+                EditorGUILayout.LabelField(GetShowName(field, value), GUILayout.Width(150));
+                EditorGUILayout.DropdownButton(new GUIContent(showText), FocusType.Passive);
                 if (type != ValueDropdownFieldType.Normal)
                 {
                     if (GUILayout.Button("-", GUILayout.Width(40)))
@@ -2262,16 +2249,30 @@ namespace TaoTie.Inspector.Editor
                 typeHierarchy.Insert(0, currentType);
                 currentType = currentType.BaseType;
             }
-            // For each type in order, get fields first, then Button methods
+            // For each type in order, collect fields and Button methods interleaved by declaration order
             foreach (var t in typeHierarchy)
             {
                 var fields = t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-                memberList.AddRange(fields);
                 var methods = t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                // Collect Button methods only
+                var buttonMethods = new List<MethodInfo>();
                 foreach (var method in methods)
                 {
                     if (method.GetCustomAttributes(typeof(ButtonAttribute), true).Length > 0)
-                        memberList.Add(method);
+                        buttonMethods.Add(method);
+                }
+                // Merge fields and Button methods by MetadataToken (declaration order)
+                int fi = 0, mi = 0;
+                while (fi < fields.Length || mi < buttonMethods.Count)
+                {
+                    if (fi >= fields.Length)
+                        memberList.Add(buttonMethods[mi++]);
+                    else if (mi >= buttonMethods.Count)
+                        memberList.Add(fields[fi++]);
+                    else if (fields[fi].MetadataToken < buttonMethods[mi].MetadataToken)
+                        memberList.Add(fields[fi++]);
+                    else
+                        memberList.Add(buttonMethods[mi++]);
                 }
             }
 

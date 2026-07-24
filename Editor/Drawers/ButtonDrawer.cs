@@ -16,29 +16,39 @@ namespace TaoTie.Inspector.Editor
 
             foreach (var method in methods)
             {
-                var buttonAttr = method.GetCustomAttribute<ButtonAttribute>();
-                if (buttonAttr == null) continue;
+                DrawSingleButton(target, method);
+            }
+        }
 
-                string buttonName = buttonAttr.Name ?? method.Name;
-                var parameters = method.GetParameters();
+        public static void DrawButtons(object target, TaoTiePropertyProcessor processor, MethodInfo method)
+        {
+            if (target == null || method == null) return;
+            DrawSingleButton(target, method);
+        }
 
-                if (parameters.Length == 0)
-                {
-                    DrawSimpleButton(buttonName, buttonAttr.Size, () => method.Invoke(target, null));
-                }
-                else
-                {
-                    DrawParameterButton(buttonName, buttonAttr.Size, method, target, parameters);
-                }
+        private static void DrawSingleButton(object target, MethodInfo method)
+        {
+            var buttonAttr = method.GetCustomAttribute<ButtonAttribute>();
+            if (buttonAttr == null) return;
+
+            string buttonName = buttonAttr.Name ?? method.Name;
+            var parameters = method.GetParameters();
+
+            if (parameters.Length == 0)
+            {
+                DrawSimpleButton(buttonName, buttonAttr.Size, () => method.Invoke(target, null));
+            }
+            else
+            {
+                DrawParameterButton(buttonName, buttonAttr.Size, method, target, parameters);
             }
         }
 
         private static void DrawSimpleButton(string name, ButtonSizes size, System.Action onClick)
         {
             GUILayoutOption heightOpt = GetHeightOption(size);
-            GUILayoutOption widthOpt = GetWidthOption(size);
 
-            if (GUILayout.Button(name, heightOpt, widthOpt))
+            if (GUILayout.Button(name, heightOpt))
             {
                 onClick?.Invoke();
             }
@@ -67,7 +77,7 @@ namespace TaoTie.Inspector.Editor
                 paramValues[i] = DrawParameterField(parameters[i], paramKey);
             }
 
-            if (GUILayout.Button("Invoke", GetHeightOption(size), GetWidthOption(size)))
+            if (GUILayout.Button("Invoke", GetHeightOption(size)))
             {
                 method.Invoke(target, paramValues);
             }
@@ -156,14 +166,7 @@ namespace TaoTie.Inspector.Editor
 
         private static GUILayoutOption GetWidthOption(ButtonSizes size)
         {
-            return size switch
-            {
-                ButtonSizes.Small => GUILayout.Width(100),
-                ButtonSizes.Medium => GUILayout.Width(150),
-                ButtonSizes.Large => GUILayout.Width(200),
-                ButtonSizes.Gigantic => GUILayout.Width(250),
-                _ => GUILayout.Width(150)
-            };
+            return null; // null = expand to full width
         }
 
         private static Vector2 ParseVector2(string s)

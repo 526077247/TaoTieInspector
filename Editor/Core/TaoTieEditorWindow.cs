@@ -8,70 +8,37 @@ namespace TaoTie.Inspector.Editor
     /// A generic EditorWindow base class that provides TaoTie's enhanced inspector drawing.
     /// This is the TaoTie equivalent of Odin's OdinEditorWindow.
     /// 
-    /// Inherit from this class to create a window that auto-draws all fields of the target:
+    /// Inherit from this class to auto-draw all fields and buttons of the window itself:
     /// <code>
     /// public class MyConfigWindow : TaoTieEditorWindow
     /// {
     ///     [MenuItem("Tools/My Config")]
     ///     static void Open() => GetWindow&lt;MyConfigWindow&gt;().Show();
+    /// 
+    ///     public Object target;
+    ///     [Button("Start")]
+    ///     public void Run() { /* ... */ }
     /// }
     /// </code>
     /// 
-    /// For UnityEngine.Object targets (ScriptableObject, MonoBehaviour), the window uses
-    /// SerializedProperty-based drawing via TaoTieEditor.
-    /// For plain C# objects, it uses reflection-based drawing via TaoTiePropertyTree.
-    /// 
-    /// Override OnGUI() for custom layout — call DrawTargetInspector() to draw the inspector.
+    /// Override OnGUI() for custom layout — call DrawInspector() to draw the TaoTie inspector.
     /// Override GetWindowTitle() to set the window title.
     /// </summary>
     public abstract class TaoTieEditorWindow : UnityEditor.EditorWindow
     {
         private UnityEditor.Editor cachedEditor;
-        private object plainTarget;
-        private TaoTiePropertyTree propertyTree;
         private Vector2 scrollPosition;
-        private bool targetDirty = true;
-
-        /// <summary>
-        /// The target object being inspected.
-        /// Set via SetTarget() or override InitializeTarget() to provide a default target.
-        /// </summary>
-        public object Target { get; private set; }
-
-        /// <summary>
-        /// Override to provide a default target when the window opens.
-        /// Default returns null (no target — shows empty state).
-        /// </summary>
-        protected virtual object InitializeTarget() => null;
 
         /// <summary>
         /// Optional: override to provide a custom title for the window.
         /// </summary>
         protected virtual string GetWindowTitle() => "TaoTie Editor Window";
 
-        /// <summary>
-        /// Set the target object to inspect.
-        /// Pass a UnityEngine.Object for SerializedProperty-based drawing,
-        /// or a plain C# object for reflection-based drawing.
-        /// </summary>
-        public void SetTarget(object target)
-        {
-            Target = target;
-            targetDirty = true;
-            Repaint();
-        }
-
-        /// <summary>
-        /// Force a refresh of the target on next OnGUI.
-        /// </summary>
-        public void RefreshTarget() => targetDirty = true;
-
         protected virtual void OnEnable()
         {
             titleContent = new GUIContent(GetWindowTitle());
             minSize = new Vector2(300, 400);
-            Target = InitializeTarget();
-            targetDirty = true;
+            CreateCachedEditor();
         }
 
         protected virtual void OnDisable()
@@ -84,64 +51,30 @@ namespace TaoTie.Inspector.Editor
         {
         }
 
-        private void UpdateTarget()
+        private void CreateCachedEditor()
         {
-            if (Target == null)
-            {
-                if (cachedEditor != null || plainTarget != null)
-                {
-                    cachedEditor = null;
-                    plainTarget = null;
-                    propertyTree = null;
-                }
-                return;
-            }
-
-            // Check if target changed
-            if (Target is UnityEngine.Object newUo)
-            {
-                if (newUo != (cachedEditor?.target))
-                {
-                    plainTarget = null;
-                    propertyTree = null;
-
-                    if (cachedEditor != null)
-                    {
-                        DestroyImmediate(cachedEditor);
-                        cachedEditor = null;
-                    }
-                    UnityEditor.Editor.CreateCachedEditor(newUo, typeof(TaoTieEditor), ref cachedEditor);
-                    titleContent = new GUIContent(GetWindowTitle(), AssetPreview.GetMiniThumbnail(newUo));
-                }
-            }
-            else
-            {
-                if (Target != plainTarget)
-                {
-                    cachedEditor = null;
-                    plainTarget = Target;
-                    propertyTree = TaoTiePropertyTree.Create(Target);
-                    titleContent = new GUIContent(GetWindowTitle());
-                }
-            }
+            if (cachedEditor != null)
+                DestroyImmediate(cachedEditor);
+            UnityEditor.Editor.CreateCachedEditor(this, typeof(TaoTieEditor), ref cachedEditor);
         }
 
         protected virtual void OnGUI()
         {
-            if (targetDirty)
-            {
-                UpdateTarget();
-                targetDirty = false;
-            }
+            // Set adaptive label width based on window width
+            float ratioW = position.width * 0.4f;
+            float oldLabelW = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = Mathf.Max(80f, ratioW);
 
-            DrawTargetInspector();
+            DrawInspector();
+
+            EditorGUIUtility.labelWidth = oldLabelW;
         }
 
         /// <summary>
-        /// Draw the TaoTie inspector for the current target.
+        /// Draw the TaoTie inspector for this window's fields and buttons.
         /// Call this from your OnGUI override if you need custom layout.
         /// </summary>
-        protected void DrawTargetInspector()
+        protected void DrawInspector()
         {
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
@@ -149,11 +82,6 @@ namespace TaoTie.Inspector.Editor
             {
                 EditorGUILayout.Space(2);
                 cachedEditor.OnInspectorGUI();
-            }
-            else if (propertyTree != null && plainTarget != null)
-            {
-                EditorGUILayout.Space(2);
-                propertyTree.Draw();
             }
             else
             {
@@ -163,13 +91,18 @@ namespace TaoTie.Inspector.Editor
                     alignment = TextAnchor.MiddleCenter,
                     fontStyle = FontStyle.Italic
                 };
-                EditorGUILayout.LabelField("No target to inspect", centeredStyle,
+                EditorGUILayout.LabelField("Inspector not initialized", centeredStyle,
                     GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
                 GUILayout.FlexibleSpace();
             }
 
             EditorGUILayout.EndScrollView();
         }
+
+        /// <summary>
+        /// Force the inspector to rebuild (e.g. after adding new serializable fields).
+        /// </summary>
+        protected void RebuildInspector() => CreateCachedEditor();
 
         /// <summary>
         /// Repaint the window.

@@ -80,11 +80,65 @@ namespace TaoTie.Inspector.Editor
             // in declaration order, so Dictionary fields appear at their correct position among siblings.
             var mergedEntries = BuildMergedEntries(entries, target);
 
-            // Draw buttons
-            ButtonDrawer.DrawButtons(target, processor);
-
             // Convert to GroupEntryData and draw via unified TaoTieGroupManager
             var groupEntries = ConvertToGroupData(mergedEntries);
+
+            // Insert button entries at correct declaration-order positions
+            var buttonMethods = processor.GetButtonMethods(target.GetType());
+            if (buttonMethods != null && buttonMethods.Count > 0)
+            {
+                // Build a map of field name → index in groupEntries
+                var fieldIndexMap = new Dictionary<string, int>();
+                for (int i = 0; i < groupEntries.Count; i++)
+                {
+                    var e = groupEntries[i].UserData as TaoTiePropertyEntry;
+                    if (e != null && !string.IsNullOrEmpty(e.PropertyName))
+                        fieldIndexMap[e.PropertyName] = i;
+                }
+                // Build a map of field MetadataToken for ordering
+                var typeHierarchy = new List<Type>();
+                Type currentType = target.GetType();
+                while (currentType != null && currentType != typeof(object))
+                {
+                    typeHierarchy.Insert(0, currentType);
+                    currentType = currentType.BaseType;
+                }
+                // Collect fields with their MetadataToken
+                var fieldTokens = new Dictionary<string, int>();
+                foreach (var t in typeHierarchy)
+                {
+                    foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    {
+                        fieldTokens[f.Name] = f.MetadataToken;
+                    }
+                }
+                // Create button entries and insert at correct positions
+                var insertList = new List<(int index, GroupEntryData data)>();
+                foreach (var method in buttonMethods)
+                {
+                    var btnEntry = new GroupEntryData
+                    {
+                        Visible = true,
+                        UserData = method
+                    };
+                    // Find insertion index based on MetadataToken
+                    int insertAt = groupEntries.Count;
+                    for (int i = groupEntries.Count - 1; i >= 0; i--)
+                    {
+                        var e = groupEntries[i].UserData as TaoTiePropertyEntry;
+                        if (e != null && fieldTokens.TryGetValue(e.PropertyName, out var token) && token < method.MetadataToken)
+                        {
+                            insertAt = i + 1;
+                            break;
+                        }
+                    }
+                    insertList.Add((insertAt, btnEntry));
+                }
+                // Insert in reverse order to preserve indices
+                insertList.Sort((a, b) => b.index.CompareTo(a.index));
+                foreach (var (index, data) in insertList)
+                    groupEntries.Insert(index, data);
+            }
 
             // Collect paths of managed reference fields (TypeFilter / HideReferenceObjectPicker)
             // whose children should be skipped (drawn manually inside the parent's foldout)
@@ -123,8 +177,14 @@ namespace TaoTie.Inspector.Editor
             }
             groupManager.DrawGroupedEntries(groupEntries, data =>
             {
-                var entry = (TaoTiePropertyEntry)data.UserData;
-                TaoTiePropertyLayout.DrawProperty(entry, target);
+                if (data.UserData is TaoTiePropertyEntry entry)
+                {
+                    TaoTiePropertyLayout.DrawProperty(entry, target);
+                }
+                else if (data.UserData is MethodInfo method)
+                {
+                    ButtonDrawer.DrawButtons(target, processor, method);
+                }
             });
 
             serializedObject.ApplyModifiedProperties();
