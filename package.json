@@ -8,6 +8,11 @@
             "displayName": "Example",
             "description": "Example scenes and scripts demonstrating TaoTie Inspector attributes, graph editor, and UI components.",
             "path": "Samples~/Example"
+        },
+        {
+            "displayName": "Attributes",
+            "description": "Runtime attributes source codes",
+            "path": "Samples~/Runtime"
         }
     ]
 }

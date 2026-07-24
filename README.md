@@ -12,6 +12,7 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 |---|---|
 | `[LabelText("name")]` | Override field display label |
 | `[ShowIf("condition")]` | Show field when condition is true |
+| `[ShowIf("member", value)]` | Show field when member equals value |
 | `[ShowIf("@expr")]` | Show field based on expression (`&&`, `\|\|`, `!`, `==`, `!=`, `()`) |
 | `[HideIf("condition")]` | Hide field when condition is true |
 | `[EnableIf("condition")]` | Enable editing when condition is true |
@@ -44,6 +45,8 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 | `[MinValue(n)]` / `[MaxValue(n)]` | Clamp numeric values |
 | `[NotAssets]` | Mark Object field as non-asset |
 
+> **Note:** `ShowIf`, `HideIf`, `EnableIf`, and `DisableIf` support `AllowMultiple` — stacking multiple attributes combines them with AND logic.
+
 ### Expression Syntax (`@` prefix)
 
 `ShowIf`, `HideIf`, `EnableIf`, and `DisableIf` support expression strings starting with `@`:
@@ -57,65 +60,16 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 
 Supported operators: `!`, `&&`, `||`, `==`, `!=`, `()`, and member names (bool fields/properties/methods).
 
-### Unified Collection Drawing
+### Multiple Conditions (AND logic)
 
-All collection types (List, Array, Dictionary, TableList, ValueDropdown arrays) share a unified box+grid visual style:
-
-- **Box container** with subtle background
-- **Toolbar title bar** with foldout toggle, count label, and `+`/`-` size controls
-- **Grid layout** with alternating row colors, index column, and per-row delete buttons
-- **Draggable column widths** (TableList only) — drag column borders to resize
-- **Performance limiting** — collections with more than 50 items show a "Show All" button instead of rendering everything
-- **Indent-safe layout** — title bar correctly aligns foldout, count, and buttons regardless of nesting depth
-
-#### ValueDropdown Arrays
+Stack multiple `ShowIf` / `HideIf` / `EnableIf` / `DisableIf` attributes for AND logic:
 
 ```csharp
-// Standard dropdown — replaces the field with a popup
-[ValueDropdown(nameof(GetOptions))]
-public int selected;
-
-// Append mode — draws the original field + a ▼ dropdown button
-[ValueDropdown(nameof(GetOptions), AppendNextDrawer = true)]
-public int valueWithDropdown;
-
-// Works on arrays/lists too — each element gets its own dropdown
-[ValueDropdown(nameof(GetOptions))]
-public List<int> dropdownList;
+[ShowIf("flagA")]
+[ShowIf("flagB")]
+[ShowIf("flagC")]
+public string visibleWhenAandBandC;
 ```
-
-### Unified Group System
-
-`FoldoutGroup`, `BoxGroup`, `TabGroup`, and `HorizontalGroup` can be nested using `/` path notation:
-
-```csharp
-[FoldoutGroup("Combat")]               // Collapsible group
-[BoxGroup("Combat/Stats")]             // Box inside the foldout
-public float attack;
-
-[FoldoutGroup("Combat")]
-public bool showAdvanced;
-
-[TabGroup("Settings", "Visual")]        // Tab group
-public Color color;
-
-[TabGroup("Settings", "Movement")]
-public float speed;
-```
-
-### Graph Node Editor
-
-- **Node-based visual graph editor** with pan/zoom, node dragging, Bezier edge connections
-- **Node groups** with collapse/expand and external port aggregation
-- **Copy/paste** with internal edge and group remapping
-- **Undo/redo** via JSON snapshots
-- **Custom node views** via `[NodeViewType(typeof(MyNodeView))]`
-- **Port groups** via `[PortGroup(n)]` for connection filtering
-- **Procedural rendering** — no external textures or GUISkin assets required
-- **Adaptive node width** — automatically widens based on group nesting depth and table/dictionary content
-- **Adaptive label width** — Title:Content = 4:6 ratio with minimum width, adapts to panel width
-- **Bidirectional edge animation** — output→input (OnExit) and input→output (OnEnter) with ping/animation
-- **Collapsed group ports** — external ports displayed on collapsed group boundary with custom labels
 
 ### Serialized Base Classes
 
@@ -150,19 +104,84 @@ public class ItemDatabase : SerializedScriptableObject
 
 > **Tip:** You can also implement `IForceTaoTieDrawing` on any custom type to force enhanced drawing without inheriting from a specific base class.
 
-### TaoTieEditorWindow
+### Unified Collection Drawing
 
-An `OdinEditorWindow`-equivalent inspector window:
+All collection types (List, Array, Dictionary, TableList, ValueDropdown arrays) share a unified box+grid visual style:
+
+- **Box container** with subtle background
+- **Toolbar title bar** with foldout toggle, count label, and `+`/`-` size controls
+- **Grid layout** with alternating row colors, index column, and per-row delete buttons
+- **Draggable column widths** (TableList only) — drag column borders to resize
+- **Performance limiting** — collections with more than 50 items show a "Show All" button instead of rendering everything
+- **Indent-safe layout** — title bar correctly aligns foldout, count, and buttons regardless of nesting depth
+
+### Unified Group System
+
+`FoldoutGroup`, `BoxGroup`, `TabGroup`, and `HorizontalGroup` can be nested using `/` path notation:
 
 ```csharp
-// Open via menu: Window > TaoTie Inspector
-// Or via code:
-var window = TaoTieEditorWindow.Open(myObject);
+[FoldoutGroup("Combat")]               // Collapsible group
+[BoxGroup("Combat/Stats")]             // Box inside the foldout
+public float attack;
+
+[FoldoutGroup("Combat")]
+public bool showAdvanced;
+
+[TabGroup("Settings", "Visual")]        // Tab group
+public Color color;
+
+[TabGroup("Settings", "Movement")]
+public float speed;
 ```
 
-- Supports any `UnityEngine.Object`
+### Editor Windows
+
+#### TaoTieEditorWindow
+
+An `OdinEditorWindow`-equivalent inspector window. Inherit and auto-draw all fields:
+
+```csharp
+public class MyConfigWindow : TaoTieEditorWindow
+{
+    [MenuItem("Tools/My Config")]
+    static void Open() => GetWindow<MyConfigWindow>().Show();
+
+    protected override object InitializeTarget() => MyConfig.Instance;
+    protected override string GetWindowTitle() => "Config Editor";
+}
+
+// Or set target at runtime:
+GetWindow<MyConfigWindow>().SetTarget(newTarget);
+```
+
+#### TaoTieDrawerWindow
+
+A persistent inspector window with drag-and-drop support:
+
+```csharp
+// Open via menu: Window > TaoTie Inspector > Drawer
+// Or via code:
+var window = TaoTieDrawerWindow.Open(myObject);
+```
+
+- Supports any `UnityEngine.Object` or plain C# object
 - Drag-and-drop to inspect
 - Follows editor selection
+
+### Graph Node Editor
+
+- **Node-based visual graph editor** with pan/zoom, node dragging, Bezier edge connections
+- **Resizable nodes** — drag the right edge to adjust node width
+- **Node groups** with collapse/expand and external port aggregation
+- **Copy/paste** with internal edge and group remapping
+- **Undo/redo** via JSON snapshots
+- **Custom node views** via `[NodeViewType(typeof(MyNodeView))]`
+- **Port groups** via `[PortGroup(n)]` for connection filtering
+- **Procedural rendering** — no external textures or GUISkin assets required
+- **Adaptive node width** — automatically widens based on group nesting depth and content
+- **Adaptive label width** — Title:Content = 4:6 ratio with minimum width, adapts to panel width
+- **Bidirectional edge animation** — output→input (OnExit) and input→output (OnEnter) with ping/animation
+- **Collapsed group ports** — external ports displayed on collapsed group boundary with custom labels
 
 ### Drawing Pipeline
 
@@ -246,10 +265,21 @@ public class PlayerConfig : MonoBehaviour
 }
 ```
 
+### Serialized Base Classes
+
+```csharp
+public class ItemDatabase : SerializedScriptableObject
+{
+    // Dictionary is directly editable in Inspector — no attributes needed
+    public Dictionary<string, ItemData> items;
+    public List<ItemData> itemList;
+}
+```
+
 ### ValueDropdown
 
 ```csharp
-public class SkillConfig : MonoBehaviour
+public class SkillConfig : SerializedMonoBehaviour
 {
     [ValueDropdown(nameof(GetSkillIds))]
     public int selectedSkillId;
@@ -260,12 +290,27 @@ public class SkillConfig : MonoBehaviour
     [ValueDropdown(nameof(GetSkillIds))]
     public List<int> skillIdList;
 
-    public static IEnumerable<ValueDropdownItem> GetSkillIds()
+    public static ValueDropdownList<int> GetSkillIds()
     {
-        yield return new ValueDropdownItem("Fire Ball", 1001);
-        yield return new ValueDropdownItem("Ice Nova", 1002);
-        yield return new ValueDropdownItem("Heal", 1003);
+        var list = new ValueDropdownList<int>();
+        list.Add("Fire Ball", 1001);
+        list.Add("Ice Nova", 1002);
+        list.Add(1003);
+        return list;
     }
+}
+```
+
+### Editor Window
+
+```csharp
+public class ConfigEditorWindow : TaoTieEditorWindow
+{
+    [MenuItem("Tools/Config Editor")]
+    static void Open() => GetWindow<ConfigEditorWindow>().Show();
+
+    protected override object InitializeTarget() => ConfigLoader.LoadConfig();
+    protected override string GetWindowTitle() => "Config Editor";
 }
 ```
 

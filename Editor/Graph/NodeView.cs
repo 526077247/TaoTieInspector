@@ -28,6 +28,10 @@ namespace TaoTie.Inspector.Editor
         // Cached inspector height from last Repaint (used on Layout events for accurate sizing)
         private float m_CachedInspectorHeight;
 
+        // Node resize drag state
+        internal static int s_ResizingNodeId = -1;
+        internal static bool s_IsResizingWidth;
+
         private static GUIStyle NodeTitleStyle => s_NodeTitle ??= new GUIStyle(EditorStyles.boldLabel)
         {
             fontSize = 13,
@@ -54,7 +58,7 @@ namespace TaoTie.Inspector.Editor
         private const float SidePadding = 6f;
         private const float InspectorSideMargin = 20f;
         private const float IndentWidth = 15f;    // pixels per indent level
-        private const float BaseWidth = 310f;      // matches NodeBase.InitNode default
+        internal const float BaseWidth = 310f;      // matches NodeBase.InitNode default
 
         private static float headerIconPadding => (HeaderHeight - HeaderIconSize) / 2;
 
@@ -189,6 +193,18 @@ namespace TaoTie.Inspector.Editor
             // The graph area's scroll rect handles the actual clipping.
             var clientRect = new Rect(windowToGridPosition, new Vector2(width, Mathf.Max(height, 5000)));
             GUI.Window(m_WindowId, clientRect, DrawNode, string.Empty, GUIStyle.none);
+
+            // Add resize cursor in screen space (outside GUI.Window clip)
+            if (graph != null && graph.currentZoom > 0.7f)
+            {
+                float actualHeight = Mathf.Max(height, m_CachedInspectorHeight > 0 ? m_CachedInspectorHeight : 200);
+                var resizeScreenRect = new Rect(
+                    clientRect.xMax - 6f * zoomLevel,
+                    clientRect.y,
+                    6f * zoomLevel,
+                    actualHeight * zoomLevel);
+                EditorGUIUtility.AddCursorRect(resizeScreenRect, MouseCursor.ResizeHorizontal);
+            }
         }
 
         public virtual void DrawInspector(bool isDetails = false)
@@ -211,24 +227,16 @@ namespace TaoTie.Inspector.Editor
         /// </summary>
         private void DrawNodeLayout()
         {
-            // --- Phase 0: Compute adaptive width based on max indent depth and content ---
-            // When zoomed out (thumbnail mode), use base width only
-            bool isThumbnail = graph != null && graph.currentZoom <= 0.7f;
-            float neededWidth;
+            // --- Phase 0: Width — always base width, only grows via manual resize ---
+            float neededWidth = BaseWidth;
 
-            if (isThumbnail)
-            {
+            // Don't shrink below user-set width (only grow)
+            if (m_Node.GetWidth() > BaseWidth)
+                neededWidth = m_Node.GetWidth();
+
+            // First-time init: set to base width
+            if (m_Node.GetWidth() <= 0)
                 neededWidth = BaseWidth;
-            }
-            else
-            {
-                int maxIndent = EstimateMaxIndentDepth(node);
-                neededWidth = BaseWidth + maxIndent * IndentWidth;
-
-                // Also check if any TableList or Dictionary fields need extra width
-                float extraContentWidth = EstimateExtraContentWidth(node);
-                neededWidth = Mathf.Max(neededWidth, BaseWidth + extraContentWidth);
-            }
 
             if (neededWidth != m_Node.GetWidth())
             {
@@ -349,8 +357,36 @@ namespace TaoTie.Inspector.Editor
                 NodeColors.DrawBorder(outlineRect, outlineColor, 2f);
             }
 
+            // --- Phase 8: Right-edge resize handle ---
+            if (graph == null || graph.currentZoom > 0.7f)
+            {
+                var resizeRect = new Rect(width - 6, 0, 6, dynamicHeight);
+                var ev = Event.current;
+                bool isResizeClick = ev != null && ev.type == EventType.MouseDown &&
+                    ev.button == 0 && resizeRect.Contains(ev.mousePosition);
+
+                if (isResizeClick)
+                {
+                    s_ResizingNodeId = m_Node.GetInstanceID();
+                    s_IsResizingWidth = true;
+                    ev.Use();
+                }
+                // Draw subtle handle
+                NodeColors.DrawRect(new Rect(width - 2, 0, 2, dynamicHeight),
+                    new Color(1f, 1f, 1f, 0.15f));
+            }
+
             // --- Update node height for next frame ---
             UpdateNodeHeight(dynamicHeight);
+        }
+
+        /// <summary>
+        /// End node resize if active. Called from GraphWindow on MouseUp.
+        /// </summary>
+        internal static void EndResize()
+        {
+            s_ResizingNodeId = -1;
+            s_IsResizingWidth = false;
         }
 
         /// <summary>

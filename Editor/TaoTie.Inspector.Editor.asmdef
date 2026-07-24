@@ -1,8 +1,7 @@
 {
     "name": "TaoTie.Inspector.Editor",
-    "references": [
-        "TaoTie.Inspector"
-    ],
+    "rootNamespace": "",
+    "references": [],
     "includePlatforms": [
         "Editor"
     ],

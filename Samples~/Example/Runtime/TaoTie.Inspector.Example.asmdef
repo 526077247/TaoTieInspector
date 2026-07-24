@@ -1,8 +1,7 @@
 {
     "name": "TaoTie.Inspector.Example",
-    "references": [
-        "TaoTie.Inspector"
-    ],
+    "rootNamespace": "",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

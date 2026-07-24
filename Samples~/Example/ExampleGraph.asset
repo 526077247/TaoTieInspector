@@ -47,9 +47,9 @@ MonoBehaviour:
   canBeReordered: 1
   curveModifier: 0
   height: 24
-  width: 1640
+  width: 310
   x: 0
-  y: 3886
+  y: 91
   id: 1c5e5afe-ea67-4b52-9dce-e2ad6c248536
   nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
   portName: OutputName1
@@ -109,9 +109,9 @@ MonoBehaviour:
   m_Name: ExampleGraph
   m_EditorClassIdentifier: 
   showNodeViewDetails: 1
-  currentPanOffset: {x: 1118.2809, y: -503.74255}
-  currentZoom: 0.8
-  windowID: 161
+  currentPanOffset: {x: 1159.0779, y: 1194.6157}
+  currentZoom: 0.6
+  windowID: 173
   startNodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
   leftInRightOut: 0
   values:
@@ -141,9 +141,9 @@ MonoBehaviour:
   canBeReordered: 1
   curveModifier: 0
   height: 24
-  width: 1640
+  width: 310
   x: 0
-  y: 3862
+  y: 67
   id: 9eac6e0f-06c8-4726-8c1c-edc2264d71db
   nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
   portName: OutputName
@@ -167,7 +167,7 @@ MonoBehaviour:
   canBeReordered: 1
   curveModifier: 0
   height: 24
-  width: 1640
+  width: 310
   x: 0
   y: 38
   id: 85785139-08ff-4f1e-ba1b-da1aaefb7bc5
@@ -221,8 +221,8 @@ MonoBehaviour:
   canBeDeleted: 1
   height: 135
   width: 310
-  x: -144
-  y: -1884
+  x: -1332
+  y: -1656
   minimumInputPortsCount: 0
   minimumOutputPortsCount: 0
   id: 7626daf7-ee75-4c44-bc19-3fae9d5cc07a
@@ -373,9 +373,9 @@ MonoBehaviour:
   canBeReordered: 1
   curveModifier: 0
   height: 24
-  width: 1640
+  width: 310
   x: 0
-  y: 3910
+  y: 115
   id: ac5742c2-9f7a-4924-8034-0c3dd0359c88
   nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
   portName: OutputName2
@@ -400,9 +400,9 @@ MonoBehaviour:
   allowDuplicateNodeName: 0
   allowEmptyNodeName: 0
   canBeDeleted: 1
-  height: 3954
-  width: 1640
-  x: -1764
+  height: 159
+  width: 310
+  x: -1824
   y: -1608
   minimumInputPortsCount: 0
   minimumOutputPortsCount: 0
@@ -416,7 +416,7 @@ MonoBehaviour:
   NumberValueDropdown: 10
   Vector4: {x: 0, y: 0, z: 0, w: 0}
   Ignore: 0
-  Range: -17.64
+  Range: -20
   Color: {r: 0, g: 0, b: 0, a: 0}
   TestClass:
     TestClassText: 

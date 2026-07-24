@@ -187,8 +187,8 @@ MonoBehaviour:
     EnableVision: 1
     ViewPanoramic: 0
     showWhenNotGlobal: "IsGlobal=false \u65F6\u53EF\u89C1"
-    showWhenVisionAndNotPanoramic: "EnableVision && !ViewPanoramic \u65F6\u53EF\u89C1"
-    showWhenComplexExpr: "(IsGlobal||EnableVision)&&!ViewPanoramic \u65F6\u53EF\u89C1"
+    showWhenVisionAndNotPanoramic: INVALID_UTF8_STRINGGGGGGGGGGGGGG
+    showWhenComplexExpr: INVALID_UTF8_STRING
     hideWhenGlobalAndPanoramic: "IsGlobal && ViewPanoramic \u65F6\u9690\u85CF"
     watchedName: initial333
   unityRangeInt: 63
@@ -210,7 +210,7 @@ MonoBehaviour:
   clampedDouble: -1.5
   disabledInEditor: "\u7F16\u8F91\u6A21\u5F0F\u7981\u7528"
   spacedBeforeAfter: "\u524D\u540E\u95F4\u8DDD"
-  nestInner1: inner1
+  nestInner1: inner11
   nestInner2: inner2
   nestDirect: direct
   hField1: 1
@@ -229,17 +229,17 @@ MonoBehaviour:
   requiredObject: {fileID: 687588909}
   requiredTransform: {fileID: 963194228}
   filteredSkill:
-    rid: 7624621061144838155
+    rid: -2
   nestedFilteredSkill:
     rid: -2
   hiddenPickerSkill:
-    rid: 7624621061144838150
+    rid: -2
   disabledFilteredSkill:
     rid: -2
   groupedDisabledSkill:
-    rid: 7624621061144838156
+    rid: -2
   disabledHiddenPickerSkill:
-    rid: 7624621061144838157
+    rid: -2
   condA: 1
   condB: 0
   condC: 1
@@ -292,34 +292,6 @@ MonoBehaviour:
     RefIds:
     - rid: -2
       type: {class: , ns: , asm: }
-    - rid: 7624621061144838150
-      type: {class: DefenseSkill, ns: TaoTie.Inspector, asm: Assembly-CSharp}
-      data:
-        skillName: 
-        cooldown: 1
-        defense: 20
-        duration: 3
-    - rid: 7624621061144838155
-      type: {class: DefenseSkill, ns: TaoTie.Inspector, asm: Assembly-CSharp}
-      data:
-        skillName: 
-        cooldown: 1
-        defense: 20
-        duration: 3
-    - rid: 7624621061144838156
-      type: {class: HealSkill, ns: TaoTie.Inspector, asm: Assembly-CSharp}
-      data:
-        skillName: 
-        cooldown: 1
-        healAmount: 50
-        healRange: 10
-    - rid: 7624621061144838157
-      type: {class: DefenseSkill, ns: TaoTie.Inspector, asm: Assembly-CSharp}
-      data:
-        skillName: 
-        cooldown: 1
-        defense: 20
-        duration: 3
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

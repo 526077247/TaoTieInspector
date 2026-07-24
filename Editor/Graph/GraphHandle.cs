@@ -1163,6 +1163,25 @@ namespace TaoTie.Inspector.Editor
 
             if (current.type == EventType.MouseDrag)
             {
+                // Handle node resize drag first — takes priority over node move
+                if (NodeView.s_IsResizingWidth && NodeView.s_ResizingNodeId >= 0)
+                {
+                    foreach (var n in m_Graph.values)
+                    {
+                        if (n.GetInstanceID() == NodeView.s_ResizingNodeId)
+                        {
+                            float newWidth = n.GetWidth() + current.delta.x / currentZoom;
+                            n.SetWidth(Mathf.Max(NodeView.BaseWidth, newWidth));
+                            // Force rebuild of port positions and edge connections
+                            m_PointsDirty = true;
+                            m_Dirty = true;
+                            break;
+                        }
+                    }
+                    current.Use();
+                    return;
+                }
+
                 //left mouse click is dragging and the graph is in panning mode
                 if (m_Mode == GraphMode.Pan)
                 {
@@ -1270,6 +1289,20 @@ namespace TaoTie.Inspector.Editor
                     return;
                 }
 
+                // End node resize on mouse up
+                if (NodeView.s_IsResizingWidth)
+                {
+                    NodeView.EndResize();
+                    // Force rebuild of port positions and edge connections
+                    m_Points = null;
+                    m_Ports = null;
+                    m_EdgeViews = null;
+                    m_PointsDirty = true;
+                    m_Dirty = true;
+                    current.Use();
+                    return;
+                }
+
                 //lifted left mouse button and was selecting via selection box -> end selections and reset graph to idle mode
                 if (m_Mode == GraphMode.Select)
                 {
@@ -1349,6 +1382,10 @@ namespace TaoTie.Inspector.Editor
 
             //check if the developer released the left mouse button outside of the graph window
             if (current.rawType == EventType.MouseUp || current.rawType == EventType.MouseLeaveWindow)
+            {
+                // End node resize if active
+                if (NodeView.s_IsResizingWidth)
+                    NodeView.EndResize();
                 switch (m_Mode)
                 {
                     case GraphMode.Select:
@@ -1357,6 +1394,7 @@ namespace TaoTie.Inspector.Editor
                         current.Use();
                         break;
                 }
+            }
         }
 
         private void DisconnectVirtualPoint(VirtualPoint virtualPoint)
