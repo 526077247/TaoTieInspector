@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -75,10 +76,10 @@ namespace TaoTie.Inspector.Editor
             var prop = new TaoTieReflectionProperty { FieldInfo = field };
 
             prop.LabelOverride = field.GetCustomAttribute<LabelTextAttribute>()?.Text;
-            prop.ShowIf = field.GetCustomAttribute<ShowIfAttribute>();
-            prop.HideIf = field.GetCustomAttribute<HideIfAttribute>();
-            prop.EnableIf = field.GetCustomAttribute<EnableIfAttribute>();
-            prop.DisableIf = field.GetCustomAttribute<DisableIfAttribute>();
+            prop.ShowIf = field.GetCustomAttributes<ShowIfAttribute>().ToArray();
+            prop.HideIf = field.GetCustomAttributes<HideIfAttribute>().ToArray();
+            prop.EnableIf = field.GetCustomAttributes<EnableIfAttribute>().ToArray();
+            prop.DisableIf = field.GetCustomAttributes<DisableIfAttribute>().ToArray();
             prop.ReadOnly = field.GetCustomAttribute<ReadOnlyAttribute>();
             prop.Title = field.GetCustomAttribute<TitleAttribute>();
 

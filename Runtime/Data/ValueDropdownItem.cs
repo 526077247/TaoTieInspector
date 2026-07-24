@@ -74,6 +74,12 @@ namespace TaoTie.Inspector
             Add(new ValueDropdownItem<T>(text, value));
         }
 
+        /// <summary> Add a value directly — uses ToString() as the display text. </summary>
+        public void Add(T value)
+        {
+            Add(new ValueDropdownItem<T>(value?.ToString() ?? "null", value));
+        }
+
         /// <summary> Implicit conversion to non-generic ValueDropdownItem list. </summary>
         public static implicit operator List<ValueDropdownItem>(ValueDropdownList<T> list)
         {

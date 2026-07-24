@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -346,10 +347,10 @@ namespace TaoTie.Inspector.Editor
 
             entry.LabelOverride = GetFirstAttr<LabelTextAttribute>(field)?.Text;
             entry.TooltipText = GetFirstAttr<TooltipAttribute>(field)?.tooltip;
-            entry.ShowIf = GetFirstAttr<ShowIfAttribute>(field);
-            entry.HideIf = GetFirstAttr<HideIfAttribute>(field);
-            entry.EnableIf = GetFirstAttr<EnableIfAttribute>(field);
-            entry.DisableIf = GetFirstAttr<DisableIfAttribute>(field);
+            entry.ShowIf = field.GetCustomAttributes<ShowIfAttribute>().ToArray();
+            entry.HideIf = field.GetCustomAttributes<HideIfAttribute>().ToArray();
+            entry.EnableIf = field.GetCustomAttributes<EnableIfAttribute>().ToArray();
+            entry.DisableIf = field.GetCustomAttributes<DisableIfAttribute>().ToArray();
             entry.ReadOnly = GetFirstAttr<ReadOnlyAttribute>(field);
             entry.Title = GetFirstAttr<TitleAttribute>(field);
 

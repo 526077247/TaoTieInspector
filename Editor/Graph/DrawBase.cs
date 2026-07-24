@@ -238,23 +238,30 @@ namespace TaoTie.Inspector.Editor
             }
             else
             {
-                // EnableIf / DisableIf
-                if (GetCachedAttr<EnableIfAttribute>(member) is EnableIfAttribute enableIfAttr)
+                // EnableIf / DisableIf (AllowMultiple — AND logic)
+                var enableIfs = member.GetCustomAttributes<EnableIfAttribute>(true);
+                foreach (var enableIfAttr in enableIfs)
                 {
-                    bool enabled = CheckCondition(member, obj, enableIfAttr.Members, enableIfAttr.Value);
+                    bool enabled = CheckCondition(member, obj, new[] { enableIfAttr.Member }, enableIfAttr.Value);
                     if (!enabled)
                     {
                         disable = true;
                         EditorGUI.BeginDisabledGroup(true);
+                        break;
                     }
                 }
-                if (!disable && GetCachedAttr<DisableIfAttribute>(member) is DisableIfAttribute disableIfAttr)
+                if (!disable)
                 {
-                    bool disabled = CheckCondition(member, obj, disableIfAttr.Members, disableIfAttr.Value);
-                    if (disabled)
+                    var disableIfs = member.GetCustomAttributes<DisableIfAttribute>(true);
+                    foreach (var disableIfAttr in disableIfs)
                     {
-                        disable = true;
-                        EditorGUI.BeginDisabledGroup(true);
+                        bool disabled = CheckCondition(member, obj, new[] { disableIfAttr.Member }, disableIfAttr.Value);
+                        if (disabled)
+                        {
+                            disable = true;
+                            EditorGUI.BeginDisabledGroup(true);
+                            break;
+                        }
                     }
                 }
             }
@@ -319,14 +326,17 @@ namespace TaoTie.Inspector.Editor
                 if (ignoreAttribute.Ignore == Ignore.Details == isDetails) return false;
             }
 
-            if (GetCachedAttr<ShowIfAttribute>(member) is ShowIfAttribute showIfAttribute)
+            // AllowMultiple: all ShowIf must pass (AND)
+            var showIfs = member.GetCustomAttributes<ShowIfAttribute>(true);
+            foreach (var showIfAttribute in showIfs)
             {
-                if (!CheckCondition(member, obj, showIfAttribute.Members, showIfAttribute.Value)) return false;
+                if (!CheckCondition(member, obj, new[] { showIfAttribute.Member }, showIfAttribute.Value)) return false;
             }
 
-            if (GetCachedAttr<HideIfAttribute>(member) is HideIfAttribute hideIfAttribute)
+            var hideIfs = member.GetCustomAttributes<HideIfAttribute>(true);
+            foreach (var hideIfAttribute in hideIfs)
             {
-                if (CheckCondition(member, obj, hideIfAttribute.Members, hideIfAttribute.Value)) return false;
+                if (CheckCondition(member, obj, new[] { hideIfAttribute.Member }, hideIfAttribute.Value)) return false;
             }
             return true;
         }

@@ -11,10 +11,10 @@ namespace TaoTie.Inspector.Editor
         public FieldInfo FieldInfo;
         public string LabelOverride;
         public int Order;
-        public ShowIfAttribute ShowIf;
-        public HideIfAttribute HideIf;
-        public EnableIfAttribute EnableIf;
-        public DisableIfAttribute DisableIf;
+        public ShowIfAttribute[] ShowIf;
+        public HideIfAttribute[] HideIf;
+        public EnableIfAttribute[] EnableIf;
+        public DisableIfAttribute[] DisableIf;
         public ReadOnlyAttribute ReadOnly;
         public TitleAttribute Title;
         public List<InfoBoxAttribute> InfoBoxes;
@@ -50,8 +50,12 @@ namespace TaoTie.Inspector.Editor
         public bool IsVisible(object target)
         {
             if (DrawIgnore != null && DrawIgnore.Ignore == Ignore.All) return false;
-            if (ShowIf != null && !TaoTieConditionResolver.EvaluateShowIf(ShowIf, target)) return false;
-            if (HideIf != null && TaoTieConditionResolver.EvaluateHideIf(HideIf, target)) return false;
+            if (ShowIf != null)
+                foreach (var attr in ShowIf)
+                    if (!TaoTieConditionResolver.EvaluateShowIf(attr, target)) return false;
+            if (HideIf != null)
+                foreach (var attr in HideIf)
+                    if (TaoTieConditionResolver.EvaluateHideIf(attr, target)) return false;
             return true;
         }
 
@@ -59,8 +63,12 @@ namespace TaoTie.Inspector.Editor
         {
             if (ReadOnly != null) return false;
             if (DisableInEditorMode != null && !EditorApplication.isPlaying) return false;
-            if (EnableIf != null && !TaoTieConditionResolver.EvaluateEnableIf(EnableIf, target)) return false;
-            if (DisableIf != null && TaoTieConditionResolver.EvaluateDisableIf(DisableIf, target)) return false;
+            if (EnableIf != null)
+                foreach (var attr in EnableIf)
+                    if (!TaoTieConditionResolver.EvaluateEnableIf(attr, target)) return false;
+            if (DisableIf != null)
+                foreach (var attr in DisableIf)
+                    if (TaoTieConditionResolver.EvaluateDisableIf(attr, target)) return false;
             return true;
         }
 

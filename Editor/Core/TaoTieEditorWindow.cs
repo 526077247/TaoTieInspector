@@ -1,201 +1,198 @@
+using System;
 using UnityEngine;
 using UnityEditor;
 
 namespace TaoTie.Inspector.Editor
 {
-    public class TaoTieEditorWindow : UnityEditor.EditorWindow
+    /// <summary>
+    /// A generic EditorWindow base class that provides TaoTie's enhanced inspector drawing
+    /// for a target object. This is the TaoTie equivalent of Odin's OdinEditorWindow.
+    /// 
+    /// Inherit from this class and override GetTarget() to return the object you want to inspect:
+    /// <code>
+    /// public class MyConfigWindow : TaoTieEditorWindow
+    /// {
+    ///     [MenuItem("Tools/My Config")]
+    ///     static void Open() => GetWindow&lt;MyConfigWindow&gt;().Show();
+    /// 
+    ///     protected override object GetTarget() => myConfigInstance;
+    /// }
+    /// </code>
+    /// 
+    /// You can also override OnGUI() for custom layout — call DrawTargetInspector() to draw the
+    /// TaoTie inspector for the current target.
+    /// </summary>
+    public abstract class TaoTieEditorWindow : UnityEditor.EditorWindow
     {
         private UnityEngine.Object unityTarget;
         private UnityEditor.Editor cachedEditor;
         private object plainTarget;
         private TaoTiePropertyTree propertyTree;
         private Vector2 scrollPosition;
+        private bool targetDirty = true;
 
-        [MenuItem("Window/TaoTie Inspector/Drawer")]
-        public static TaoTieEditorWindow Open()
+        /// <summary>
+        /// Override to provide the target object to inspect.
+        /// Return a UnityEngine.Object to use SerializedProperty-based drawing,
+        /// or a plain C# object to use reflection-based drawing.
+        /// </summary>
+        protected abstract object GetTarget();
+
+        /// <summary>
+        /// Optional: override to provide a custom title for the window.
+        /// Default uses the target type name.
+        /// </summary>
+        protected virtual string GetWindowTitle() => "TaoTie Editor Window";
+
+        /// <summary>
+        /// Whether the window should auto-refresh the target each frame.
+        /// Override and return false if the target is static.
+        /// </summary>
+        protected virtual bool AutoRefreshTarget => true;
+
+        protected virtual void OnEnable()
         {
-            var window = GetWindow<TaoTieEditorWindow>("TaoTie Inspector");
-            window.minSize = new Vector2(300, 400);
-            return window;
+            titleContent = new GUIContent(GetWindowTitle());
+            minSize = new Vector2(300, 400);
         }
 
-        public static TaoTieEditorWindow Open(object target)
+        protected virtual void OnDisable()
         {
-            var window = Open();
-            window.SetTarget(target);
-            return window;
+            if (cachedEditor != null)
+                DestroyImmediate(cachedEditor);
         }
-
-        public void SetTarget(object obj)
+        protected virtual void OnDestroy()
         {
-            if (obj is UnityEngine.Object uo)
+        }
+        /// <summary>
+        /// Force a refresh of the target on next OnGUI.
+        /// </summary>
+        public void RefreshTarget() => targetDirty = true;
+
+        private void UpdateTarget()
+        {
+            object newTarget = GetTarget();
+
+            if (newTarget == null)
             {
-                unityTarget = uo;
-                plainTarget = null;
-                propertyTree = null;
-
-                if (cachedEditor != null)
+                if (unityTarget != null || plainTarget != null)
                 {
-                    DestroyImmediate(cachedEditor);
-                    cachedEditor = null;
+                    unityTarget = null;
+                    plainTarget = null;
+                    propertyTree = null;
+                    if (cachedEditor != null)
+                    {
+                        DestroyImmediate(cachedEditor);
+                        cachedEditor = null;
+                    }
                 }
-
-                UnityEditor.Editor.CreateCachedEditor(uo, typeof(TaoTieEditor), ref cachedEditor);
-                titleContent = new GUIContent(uo.name, AssetPreview.GetMiniThumbnail(uo));
+                return;
             }
-            else if (obj != null)
+
+            // Check if target changed
+            if (newTarget is UnityEngine.Object newUo)
             {
-                unityTarget = null;
-                cachedEditor = null;
-                plainTarget = obj;
-                propertyTree = TaoTiePropertyTree.Create(obj);
-                titleContent = new GUIContent(obj.GetType().Name);
+                if (newUo != unityTarget)
+                {
+                    unityTarget = newUo;
+                    plainTarget = null;
+                    propertyTree = null;
+
+                    if (cachedEditor != null)
+                    {
+                        DestroyImmediate(cachedEditor);
+                        cachedEditor = null;
+                    }
+                    UnityEditor.Editor.CreateCachedEditor(unityTarget, typeof(TaoTieEditor), ref cachedEditor);
+                    titleContent = new GUIContent(GetWindowTitle(), AssetPreview.GetMiniThumbnail(unityTarget));
+                }
             }
             else
             {
-                ClearTarget();
+                if (newTarget != plainTarget)
+                {
+                    unityTarget = null;
+                    cachedEditor = null;
+                    plainTarget = newTarget;
+                    propertyTree = TaoTiePropertyTree.Create(newTarget);
+                    titleContent = new GUIContent(GetWindowTitle());
+                }
             }
-
-            Repaint();
         }
 
-        public void ClearTarget()
+        protected virtual void OnGUI()
         {
-            unityTarget = null;
-            plainTarget = null;
-            propertyTree = null;
-
-            if (cachedEditor != null)
+            if (AutoRefreshTarget || targetDirty)
             {
-                DestroyImmediate(cachedEditor);
-                cachedEditor = null;
+                UpdateTarget();
+                targetDirty = false;
             }
 
-            titleContent = new GUIContent("TaoTie Inspector");
-            Repaint();
+            DrawTargetInspector();
         }
 
-        private void OnGUI()
+        /// <summary>
+        /// Draw the TaoTie inspector for the current target.
+        /// Call this from your OnGUI override if you need custom layout.
+        /// </summary>
+        protected void DrawTargetInspector()
         {
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
             if (cachedEditor != null && unityTarget != null)
             {
-                DrawObjectHeader(unityTarget);
-                EditorGUILayout.Space(4);
+                EditorGUILayout.Space(2);
                 cachedEditor.OnInspectorGUI();
             }
             else if (propertyTree != null && plainTarget != null)
             {
-                DrawPlainObjectHeader(plainTarget);
-                EditorGUILayout.Space(4);
+                EditorGUILayout.Space(2);
                 propertyTree.Draw();
             }
             else
             {
-                DrawDropArea();
+                GUILayout.FlexibleSpace();
+                var centeredStyle = new GUIStyle(GUI.skin.label)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    fontStyle = FontStyle.Italic
+                };
+                EditorGUILayout.LabelField("No target to inspect", centeredStyle,
+                    GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+                GUILayout.FlexibleSpace();
             }
 
             EditorGUILayout.EndScrollView();
-
-            // Footer toolbar
-            DrawFooter();
         }
 
-        private void DrawObjectHeader(UnityEngine.Object obj)
+        /// <summary>
+        /// Repaint the window. Safe to call from any thread context.
+        /// </summary>
+        protected void RepaintWindow() => Repaint();
+    }
+
+    /// <summary>
+    /// Generic version of TaoTieEditorWindow that takes a specific target type.
+    /// Provides type-safe access to the target.
+    /// </summary>
+    public abstract class TaoTieEditorWindow<T> : TaoTieEditorWindow where T : class
+    {
+        private T cachedTarget;
+
+        /// <summary> The current target object. </summary>
+        protected T Target
         {
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-
-            // Object icon
-            Texture icon = AssetPreview.GetMiniThumbnail(obj);
-            if (icon != null)
-                GUILayout.Label(icon, GUILayout.Width(20), GUILayout.Height(20));
-
-            // Object name
-            EditorGUILayout.LabelField(obj.name, EditorStyles.boldLabel);
-
-            GUILayout.FlexibleSpace();
-
-            // Ping button
-            if (GUILayout.Button("Ping", EditorStyles.toolbarButton))
-                EditorGUIUtility.PingObject(obj);
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawPlainObjectHeader(object obj)
-        {
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-
-            EditorGUILayout.LabelField(obj.GetType().FullName, EditorStyles.boldLabel);
-            GUILayout.FlexibleSpace();
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawDropArea()
-        {
-            GUILayout.FlexibleSpace();
-
-            var dropRect = GUILayoutUtility.GetRect(0, 100, GUILayout.ExpandWidth(true));
-            GUI.Box(dropRect, "Drag any object here to inspect");
-
-            var centeredStyle = new GUIStyle(GUI.skin.label)
+            get
             {
-                alignment = TextAnchor.MiddleCenter,
-                fontStyle = FontStyle.Italic
-            };
-            GUI.Label(dropRect, "Drag any UnityEngine.Object or\nplain C# object here", centeredStyle);
-
-            GUILayout.FlexibleSpace();
-
-            // Handle drag and drop
-            if (dropRect.Contains(Event.current.mousePosition))
-            {
-                if (Event.current.type == EventType.DragUpdated)
-                {
-                    DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
-                    Event.current.Use();
-                }
-                else if (Event.current.type == EventType.DragPerform)
-                {
-                    DragAndDrop.AcceptDrag();
-                    if (DragAndDrop.objectReferences.Length > 0)
-                    {
-                        SetTarget(DragAndDrop.objectReferences[0]);
-                    }
-                    Event.current.Use();
-                }
+                if (cachedTarget == null || AutoRefreshTarget)
+                    cachedTarget = GetTarget() as T;
+                return cachedTarget;
             }
         }
 
-        private void DrawFooter()
-        {
-            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-            GUILayout.FlexibleSpace();
+        /// <summary> Override to provide the typed target. </summary>
+        protected abstract T GetTypedTarget();
 
-            if (GUILayout.Button("Clear", EditorStyles.toolbarButton))
-            {
-                ClearTarget();
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void OnSelectionChange()
-        {
-            if (unityTarget != null || plainTarget != null) return;
-            if (Selection.activeObject != null)
-            {
-                SetTarget(Selection.activeObject);
-                Repaint();
-            }
-        }
-
-        protected virtual void OnDestroy()
-        {
-            if (cachedEditor != null)
-                DestroyImmediate(cachedEditor);
-        }
+        protected override object GetTarget() => GetTypedTarget();
     }
 }
