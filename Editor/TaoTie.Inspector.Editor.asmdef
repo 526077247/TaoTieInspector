@@ -1,0 +1,17 @@
+{
+    "name": "TaoTie.Inspector.Editor",
+    "references": [
+        "TaoTie.Inspector"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

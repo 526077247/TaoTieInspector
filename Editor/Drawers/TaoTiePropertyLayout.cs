@@ -1,0 +1,1028 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
+using UnityEditor;
+using UnityEngine;
+
+namespace TaoTie.Inspector.Editor
+{
+    public static class TaoTiePropertyLayout
+    {
+        private static readonly List<(TaoTiePropertyEntry entry, object target)> _pendingValueChangedCallbacks = new();
+        private static readonly List<(TaoTiePropertyEntry entry, object target)> _pendingCollectionChangedCallbacks = new();
+        private static readonly List<string> _pendingManagedReferenceClears = new();
+        private static readonly List<(string path, Type type)> _pendingManagedReferenceSets = new();
+        // Per-table column widths — key: property path, value: column widths
+        private static readonly Dictionary<string, float[]> _tableColumnWidths = new();
+        // Per-table dragging state
+        private static string _draggingTablePath;
+        private static int _draggingColumnIndex = -1;
+
+        // Performance: max rows to render before requiring "Show All" expansion
+        private const int k_MaxVisibleRows = 50;
+
+        /// <summary>
+        /// Returns the list of property paths pending managed reference clear.
+        /// Used by TaoTieEditor to skip drawing children of cleared references.
+        /// </summary>
+        public static List<string> GetPendingClearPaths()
+        {
+            return _pendingManagedReferenceClears;
+        }
+
+        /// <summary>
+        /// Returns true if there are pending managed reference changes (set or clear).
+        /// </summary>
+        public static bool HasPendingManagedReferenceChanges()
+        {
+            return _pendingManagedReferenceClears.Count > 0 || _pendingManagedReferenceSets.Count > 0;
+        }
+
+        /// <summary>
+        /// Flush all pending operations. Call this after serializedObject.ApplyModifiedProperties().
+        /// </summary>
+        public static void FlushPendingCallbacks()
+        {
+            // OnValueChanged callbacks
+            foreach (var (entry, target) in _pendingValueChangedCallbacks)
+            {
+                if (entry.OnValueChanged == null) continue;
+                var condTarget = ResolveConditionTarget(target, entry);
+                var methodType = entry.DeclaringType ?? condTarget?.GetType() ?? target.GetType();
+                ReflectionMethodInvoker.InvokeNoArg(condTarget ?? target, methodType, entry.OnValueChanged.MethodName);
+            }
+            _pendingValueChangedCallbacks.Clear();
+
+            // OnCollectionChanged callbacks
+            foreach (var (entry, target) in _pendingCollectionChangedCallbacks)
+            {
+                if (entry.OnCollectionChanged == null) continue;
+                var condTarget = ResolveConditionTarget(target, entry);
+                var methodType = entry.DeclaringType ?? condTarget?.GetType() ?? target.GetType();
+                ReflectionMethodInvoker.InvokeNoArg(condTarget ?? target, methodType, entry.OnCollectionChanged.After);
+            }
+            _pendingCollectionChangedCallbacks.Clear();
+        }
+
+        /// <summary>
+        /// Apply pending managed reference changes to the serialized object.
+        /// Call this after ApplyModifiedProperties but before Update.
+        /// </summary>
+        public static void ApplyPendingManagedReferences(UnityEditor.SerializedObject so)
+        {
+            foreach (var path in _pendingManagedReferenceClears)
+            {
+                var prop = so.FindProperty(path);
+                if (prop != null) prop.managedReferenceValue = null;
+            }
+            _pendingManagedReferenceClears.Clear();
+
+            foreach (var (path, type) in _pendingManagedReferenceSets)
+            {
+                var prop = so.FindProperty(path);
+                if (prop != null) prop.managedReferenceValue = Activator.CreateInstance(type);
+            }
+            _pendingManagedReferenceSets.Clear();
+        }
+
+        public static void DrawProperty(TaoTiePropertyEntry entry, object target)
+        {
+            // Reflection-drawn field (Dictionary, etc.)
+            if (entry.IsReflectionField && entry.ReflectionField != null)
+            {
+                DrawReflectionProperty(entry, target);
+                return;
+            }
+
+            if (entry.Property == null) return;
+
+            // Space before
+            if (entry.Space != null && entry.Space.SpaceBefore > 0)
+                GUILayout.Space(entry.Space.SpaceBefore);
+
+            // Title
+            if (entry.Title != null)
+            {
+                TitleDrawer.Draw(entry.Title);
+            }
+
+            // Info boxes
+            if (entry.InfoBoxes != null)
+            {
+                foreach (var infoBox in entry.InfoBoxes)
+                {
+                    bool show = true;
+                    if (!string.IsNullOrEmpty(infoBox.VisibleIf))
+                        show = TaoTieConditionResolver.Evaluate(target, infoBox.VisibleIf);
+                    if (show)
+                        InfoBoxDrawer.Draw(infoBox);
+                }
+            }
+
+            // Header (Unity built-in)
+            if (entry.Header != null)
+            {
+                EditorGUILayout.LabelField(entry.Header.header);
+            }
+
+            // Space (Unity built-in)
+            if (entry.UnitySpace != null)
+            {
+                EditorGUILayout.Space(entry.UnitySpace.height);
+            }
+
+            // NotNull check
+            if (entry.NotNull != null && entry.Property.propertyType == SerializedPropertyType.ObjectReference
+                && entry.Property.objectReferenceValue == null)
+            {
+                NotNullRenderer.Draw(entry.NotNull.ErrorMessage, true);
+            }
+
+            // Save GUI state
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && entry.Enabled;
+
+            // Draw the property
+            bool changed = false;
+
+            // TypeFilter: if the property is a managed reference with a TypeFilter,
+            // provide a type selection dropdown when null, and a foldout + "SetNull" button when not null
+            if (entry.TypeFilter != null && entry.Property.propertyType == SerializedPropertyType.ManagedReference)
+            {
+                if (entry.Property.managedReferenceValue == null)
+                {
+                    var types = ResolveTypeFilter(entry.TypeFilter.FilterGetter, target, entry);
+                    var names = new string[types.Count];
+                    for (int i = 0; i < types.Count; i++)
+                    {
+                        names[i] = LabelResolver.GetTypeLabel(types[i]);
+                    }
+                    EditorGUILayout.LabelField(GetLabel(entry));
+                    var idx = EditorGUILayout.Popup(-1, names);
+                    if (idx >= 0)
+                    {
+                        _pendingManagedReferenceSets.Add((entry.Property.propertyPath, types[idx]));
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    var refType = entry.Property.managedReferenceValue.GetType();
+                    string typeName = LabelResolver.GetTypeLabel(refType);
+
+                    bool pendingClear = _pendingManagedReferenceClears.Contains(entry.Property.propertyPath);
+                    if (pendingClear)
+                    {
+                        EditorGUILayout.LabelField(GetLabel(entry));
+                    }
+                    else
+                    {
+                        // Foldout + label + type name + SetNull button on same line
+                        string foldKey = "TaoTie_Fold_" + entry.Property.propertyPath;
+                        bool fold = SessionState.GetBool(foldKey, true);
+
+                        // Measure label width to position type name right after it
+                        var label = GetLabel(entry);
+                        float labelW = label != null
+                            ? EditorStyles.foldout.CalcSize(label).x + 18f
+                            : 100f;
+
+                        Rect foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+                        float buttonW = 55f;
+                        float buttonX = foldRect.xMax - buttonW - 2f;
+                        Rect buttonRect = new Rect(buttonX, foldRect.y, buttonW, foldRect.height);
+                        Rect actualFoldRect = new Rect(foldRect.x, foldRect.y, buttonX - foldRect.x - 4f, foldRect.height);
+
+                        // Check if SetNull was clicked before drawing foldout
+                        bool setNullClicked = GUI.Button(buttonRect, "SetNull");
+                        // Draw foldout only on the area before the button
+                        fold = EditorGUI.Foldout(actualFoldRect, fold, label, true);
+
+                        if (setNullClicked)
+                        {
+                            _pendingManagedReferenceClears.Add(entry.Property.propertyPath);
+                            changed = true;
+                        }
+
+                        SessionState.SetBool(foldKey, fold);
+
+                        if (fold)
+                        {
+                            // Draw children manually (skip the parent PropertyField which adds a duplicate foldout)
+                            EditorGUI.indentLevel++;
+                            var childProp = entry.Property.Copy();
+                            int targetDepth = entry.Property.depth + 1;
+                            if (childProp.NextVisible(true))
+                            {
+                                do
+                                {
+                                    if (childProp.depth != targetDepth) break;
+                                    EditorGUILayout.PropertyField(childProp, true);
+                                } while (childProp.NextVisible(false));
+                            }
+                            EditorGUI.indentLevel--;
+                        }
+                    }
+                }
+            }
+            // [SerializeReference] without TypeFilter but with HideReferenceObjectPicker
+            else if (entry.HideReferenceObjectPicker != null && entry.Property.propertyType == SerializedPropertyType.ManagedReference)
+            {
+                if (entry.Property.managedReferenceValue == null)
+                {
+                    // null → allow type selection (find all non-abstract subclasses)
+                    var fieldPath = entry.PropertyPath;
+                    var fieldInfo = ResolveFieldFromPath(target, fieldPath);
+                    if (fieldInfo != null)
+                    {
+                        var fieldType = fieldInfo.FieldType;
+                        var types = new List<Type>();
+                        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                        {
+                            foreach (var t in asm.GetTypes())
+                            {
+                                if (t.IsClass && !t.IsAbstract && fieldType.IsAssignableFrom(t))
+                                    types.Add(t);
+                            }
+                        }
+                        var names = new string[types.Count];
+                        for (int i = 0; i < types.Count; i++)
+                        {
+                            names[i] = LabelResolver.GetTypeLabel(types[i]);
+                        }
+                        EditorGUILayout.LabelField(GetLabel(entry));
+                        var idx = EditorGUILayout.Popup(-1, names);
+                        if (idx >= 0)
+                        {
+                            _pendingManagedReferenceSets.Add((entry.Property.propertyPath, types[idx]));
+                            changed = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // not null → no SetNull button (HideReferenceObjectPicker hides picker and clear)
+                    // Foldout + label + type name on same line
+                    var refType = entry.Property.managedReferenceValue.GetType();
+                    string typeName = LabelResolver.GetTypeLabel(refType);
+
+                    bool pendingClear = _pendingManagedReferenceClears.Contains(entry.Property.propertyPath);
+                    if (pendingClear)
+                    {
+                        EditorGUILayout.LabelField(GetLabel(entry));
+                    }
+                    else
+                    {
+                        string foldKey = "TaoTie_Fold_" + entry.Property.propertyPath;
+                        bool fold = SessionState.GetBool(foldKey, true);
+
+                        var label = GetLabel(entry);
+                        float labelW = label != null
+                            ? EditorStyles.foldout.CalcSize(label).x + 18f
+                            : 100f;
+
+                        Rect foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+                        fold = EditorGUI.Foldout(foldRect, fold, label, true);
+
+                        Rect typeRect = new Rect(foldRect.x + labelW, foldRect.y,
+                            EditorGUIUtility.currentViewWidth - labelW - 20f, foldRect.height);
+                        EditorGUI.LabelField(typeRect, typeName, EditorStyles.boldLabel);
+
+                        SessionState.SetBool(foldKey, fold);
+
+                        if (fold)
+                        {
+                            // Draw children manually (skip parent PropertyField)
+                            EditorGUI.indentLevel++;
+                            var childProp = entry.Property.Copy();
+                            int targetDepth = entry.Property.depth + 1;
+                            if (childProp.NextVisible(true))
+                            {
+                                do
+                                {
+                                    if (childProp.depth != targetDepth) break;
+                                    EditorGUILayout.PropertyField(childProp, true);
+                                } while (childProp.NextVisible(false));
+                            }
+                            EditorGUI.indentLevel--;
+                        }
+                    }
+                }
+            }
+            // TableList: draw as table rows instead of default foldout list
+            else if (entry.TableList != null)
+            {
+                if (entry.Property.isArray)
+                {
+                    changed = DrawTableList(entry);
+                }
+                else
+                {
+                    // TableList on non-array property — fallback to default
+                    EditorGUI.BeginChangeCheck();
+                    EditorGUILayout.PropertyField(entry.Property, GetLabel(entry), true);
+                    if (EditorGUI.EndChangeCheck())
+                        changed = true;
+                }
+            }
+            else if (entry.EnumToggleButtons != null && entry.Property.propertyType == SerializedPropertyType.Enum)
+            {
+                EditorGUI.BeginChangeCheck();
+                EnumToggleButtonsDrawer.Draw(entry.Property, GetLabel(entry));
+                if (EditorGUI.EndChangeCheck())
+                    changed = true;
+            }
+            else if (entry.ValueDropdown != null)
+            {
+                if (entry.Property.isArray)
+                {
+                    int arraySizeBefore = entry.Property.arraySize;
+                    bool dropdownChanged = ValueDropdownDrawer.DrawArray(
+                        entry.Property, entry.ValueDropdown, target, GetLabel(entry));
+                    if (dropdownChanged)
+                    {
+                        changed = true;
+                        if (entry.OnCollectionChanged != null)
+                        {
+                            int arraySizeAfter = entry.Property.arraySize;
+                            if (arraySizeAfter != arraySizeBefore)
+                                _pendingCollectionChangedCallbacks.Add((entry, target));
+                        }
+                    }
+                }
+                else
+                {
+                    EditorGUI.BeginChangeCheck();
+                    ValueDropdownDrawer.Draw(entry.Property, entry.ValueDropdown, target, GetLabel(entry));
+                    if (EditorGUI.EndChangeCheck())
+                        changed = true;
+                }
+            }
+            else if (entry.Range != null && entry.Property.propertyType == SerializedPropertyType.Float)
+            {
+                EditorGUI.BeginChangeCheck();
+                float min = entry.Range.MinMember != null
+                    ? TaoTieConditionResolver.GetMember(target, entry.Range.MinMember) is System.Reflection.FieldInfo fi
+                        ? (float)fi.GetValue(target)
+                        : (float)entry.Range.Min
+                    : (float)entry.Range.Min;
+                float max = entry.Range.MaxMember != null
+                    ? TaoTieConditionResolver.GetMember(target, entry.Range.MaxMember) is System.Reflection.FieldInfo fi2
+                        ? (float)fi2.GetValue(target)
+                        : (float)entry.Range.Max
+                    : (float)entry.Range.Max;
+                EditorGUILayout.Slider(entry.Property, min, max, GetLabel(entry));
+                if (EditorGUI.EndChangeCheck())
+                    changed = true;
+            }
+            else if (entry.Range != null && entry.Property.propertyType == SerializedPropertyType.Integer)
+            {
+                EditorGUI.BeginChangeCheck();
+                int min = entry.Range.MinMember != null
+                    ? TaoTieConditionResolver.GetMember(target, entry.Range.MinMember) is System.Reflection.FieldInfo fi
+                        ? (int)fi.GetValue(target)
+                        : (int)entry.Range.Min
+                    : (int)entry.Range.Min;
+                int max = entry.Range.MaxMember != null
+                    ? TaoTieConditionResolver.GetMember(target, entry.Range.MaxMember) is System.Reflection.FieldInfo fi2
+                        ? (int)fi2.GetValue(target)
+                        : (int)entry.Range.Max
+                    : (int)entry.Range.Max;
+                EditorGUILayout.IntSlider(entry.Property, min, max, GetLabel(entry));
+                if (EditorGUI.EndChangeCheck())
+                    changed = true;
+            }
+            else if (entry.UnityRange != null && entry.Property.propertyType == SerializedPropertyType.Float)
+            {
+                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.Slider(entry.Property, entry.UnityRange.min, entry.UnityRange.max, GetLabel(entry));
+                if (EditorGUI.EndChangeCheck())
+                    changed = true;
+            }
+            else if (entry.UnityRange != null && entry.Property.propertyType == SerializedPropertyType.Integer)
+            {
+                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.IntSlider(entry.Property, (int)entry.UnityRange.min, (int)entry.UnityRange.max, GetLabel(entry));
+                if (EditorGUI.EndChangeCheck())
+                    changed = true;
+            }
+            else
+            {
+                if (entry.Property.isArray)
+                {
+                    changed = DrawArrayBox(entry);
+                }
+                else
+                {
+                    // Track array size before to detect real collection changes (not foldout toggles)
+                    int arraySizeBefore = entry.Property.isArray ? entry.Property.arraySize : -1;
+                    EditorGUI.BeginChangeCheck();
+                    EditorGUILayout.PropertyField(entry.Property, GetLabel(entry), true);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        changed = true;
+                        if (entry.OnCollectionChanged != null && entry.Property.isArray)
+                        {
+                            int arraySizeAfter = entry.Property.arraySize;
+                            if (arraySizeAfter != arraySizeBefore)
+                                _pendingCollectionChangedCallbacks.Add((entry, target));
+                        }
+                    }
+                }
+            }
+
+            // Clamp MinValue / MaxValue
+            if (changed)
+            {
+                if (entry.MinValue != null || entry.MaxValue != null)
+                    ClampMinMax(entry);
+            }
+
+            // Restore GUI state
+            GUI.enabled = wasEnabled;
+
+            // OnValueChanged callback — defer to end of frame to avoid invalidating SerializedProperty references
+            if (changed && entry.OnValueChanged != null)
+            {
+                _pendingValueChangedCallbacks.Add((entry, target));
+            }
+
+            // OnCollectionChanged callback — handled per-field above (only for real array size changes)
+            // No generic trigger here to avoid foldout toggle triggering it
+
+            // OnStateUpdate callback
+            if (entry.OnStateUpdate != null)
+            {
+                var condTarget2 = ResolveConditionTarget(target, entry);
+                var methodType2 = entry.DeclaringType ?? condTarget2?.GetType() ?? target.GetType();
+                ReflectionMethodInvoker.InvokeNoArg(condTarget2 ?? target, methodType2, entry.OnStateUpdate.Action);
+            }
+
+            // Space after
+            if (entry.Space != null && entry.Space.SpaceAfter > 0)
+                GUILayout.Space(entry.Space.SpaceAfter);
+        }
+
+        private static GUIContent GetLabel(TaoTiePropertyEntry entry)
+        {
+            string text = entry.LabelOverride;
+            string tooltip = entry.TooltipText;
+
+            if (string.IsNullOrEmpty(text) && string.IsNullOrEmpty(tooltip))
+                return null;
+
+            // Prefix * when tooltip is present
+            if (!string.IsNullOrEmpty(tooltip) && !string.IsNullOrEmpty(text))
+                text = "*" + text;
+            else if (!string.IsNullOrEmpty(tooltip))
+                text = "*" + ObjectNames.NicifyVariableName(entry.PropertyName);
+
+            if (string.IsNullOrEmpty(text)) return null;
+            return new GUIContent(text, tooltip);
+        }
+
+        /// <summary>
+        /// Draw a reflection-based field (Dictionary, unserialized Array/List) using DrawBase.
+        /// </summary>
+        private static void DrawReflectionProperty(TaoTiePropertyEntry entry, object target)
+        {
+            var field = entry.ReflectionField;
+            var obj = target;
+
+            // Space before
+            if (entry.Space != null && entry.Space.SpaceBefore > 0)
+                GUILayout.Space(entry.Space.SpaceBefore);
+
+            // Title
+            if (entry.Title != null)
+                TitleDrawer.Draw(entry.Title);
+
+            // Info boxes
+            if (entry.InfoBoxes != null)
+            {
+                foreach (var ib in entry.InfoBoxes)
+                    InfoBoxDrawer.Draw(ib);
+            }
+
+            // Header / Space (Unity built-in)
+            if (entry.Header != null)
+                EditorGUILayout.LabelField(entry.Header.header);
+            if (entry.UnitySpace != null)
+                EditorGUILayout.Space(entry.UnitySpace.height);
+
+            // Disabled state
+            bool wasEnabled = GUI.enabled;
+            bool enabled = true;
+            if (entry.ReadOnly != null) enabled = false;
+            if (entry.DisableInEditorMode != null && !EditorApplication.isPlaying) enabled = false;
+            GUI.enabled = wasEnabled && enabled;
+
+            // Draw via DrawBase reflection — DrawBase.DrawFieldDictionaryInspector / DrawIListBoxGrid
+            // already provide their own box+foldout wrapper, so we don't add another here
+            var drawBase = new DrawBase();
+            var drawMethod = typeof(DrawBase).GetMethod("DrawFieldInspector",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (drawMethod != null)
+            {
+                drawMethod.Invoke(drawBase, new object[] { field, obj, true });
+            }
+
+            GUI.enabled = wasEnabled;
+
+            // Space after
+            if (entry.Space != null && entry.Space.SpaceAfter > 0)
+                GUILayout.Space(entry.Space.SpaceAfter);
+        }
+
+        private static void ClampMinMax(TaoTiePropertyEntry entry)
+        {
+            switch (entry.Property.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    if (entry.MinValue != null)
+                        entry.Property.intValue = Mathf.Max(entry.Property.intValue, (int)System.Math.Ceiling(entry.MinValue.MinValue));
+                    if (entry.MaxValue != null)
+                        entry.Property.intValue = Mathf.Min(entry.Property.intValue, (int)System.Math.Floor(entry.MaxValue.MaxValue));
+                    if (entry.UnityMin != null)
+                        entry.Property.intValue = Mathf.Max(entry.Property.intValue, Mathf.CeilToInt(entry.UnityMin.min));
+                    break;
+                case SerializedPropertyType.Float:
+                    if (entry.MinValue != null)
+                        entry.Property.floatValue = Mathf.Max(entry.Property.floatValue, (float)entry.MinValue.MinValue);
+                    if (entry.MaxValue != null)
+                        entry.Property.floatValue = Mathf.Min(entry.Property.floatValue, (float)entry.MaxValue.MaxValue);
+                    if (entry.UnityMin != null)
+                        entry.Property.floatValue = Mathf.Max(entry.Property.floatValue, entry.UnityMin.min);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Draw array property as a table with grid lines and aligned columns.
+        /// </summary>
+        private static bool DrawTableList(TaoTiePropertyEntry entry)
+        {
+            var prop = entry.Property;
+            bool changed = false;
+            var label = GetLabel(entry);
+            string title = label?.text ?? prop.displayName;
+            string tableKey = entry.PropertyPath;
+
+            // Collect column definitions from first element
+            var columnNames = new List<string>();
+            if (prop.arraySize > 0)
+            {
+                var firstElement = prop.GetArrayElementAtIndex(0);
+                if (firstElement.hasVisibleChildren)
+                {
+                    int targetDepth = firstElement.depth + 1;
+                    var colIter = firstElement.Copy();
+                    if (colIter.NextVisible(true))
+                    {
+                        do
+                        {
+                            if (colIter.depth != targetDepth) break;
+                            columnNames.Add(colIter.name);
+                        } while (colIter.NextVisible(false));
+                    }
+                }
+            }
+
+            int colCount = columnNames.Count;
+            float indexColW = 28f;
+            float deleteColW = 22f;
+            float dragHandleW = 6f;
+            float availableWidth = EditorGUIUtility.currentViewWidth - 40f;
+            float defaultColW = colCount > 0 ? (availableWidth - indexColW - deleteColW) / colCount : 0f;
+            if (defaultColW < 50f) defaultColW = 50f;
+
+            // Get or init column widths
+            float[] colWidths;
+            if (!_tableColumnWidths.TryGetValue(tableKey, out colWidths) || colWidths.Length != colCount)
+            {
+                colWidths = new float[colCount];
+                for (int i = 0; i < colCount; i++) colWidths[i] = defaultColW;
+                _tableColumnWidths[tableKey] = colWidths;
+            }
+
+            // Handle column drag
+            var ev = Event.current;
+            if (ev != null && _draggingTablePath == tableKey && _draggingColumnIndex >= 0 && _draggingColumnIndex < colCount)
+            {
+                if (ev.type == EventType.MouseDrag)
+                {
+                    colWidths[_draggingColumnIndex] = Mathf.Max(30f, colWidths[_draggingColumnIndex] + ev.delta.x);
+                    ev.Use();
+                }
+                if (ev.type == EventType.MouseUp)
+                {
+                    _draggingTablePath = null;
+                    _draggingColumnIndex = -1;
+                    ev.Use();
+                }
+            }
+
+            // Background box
+            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            EditorGUILayout.BeginVertical(boxStyle);
+
+            // Foldout title bar
+            string foldKey = "TaoTie_Fold_Table_" + entry.PropertyPath;
+            bool foldout = SessionState.GetBool(foldKey, false);
+            // Reset indent for title bar so Foldout doesn't add extra offset
+            int oldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            Rect titleBarRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            EditorGUI.DrawRect(titleBarRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
+            float tbX = titleBarRect.x + 14f;
+            // Anchor buttons to right edge (xMax is indent-independent)
+            float minusX = titleBarRect.xMax - 24f - 2f;
+            float plusX = minusX - 24f - 2f;
+            // Count label before buttons
+            string countText = $"({prop.arraySize})";
+            var countContent = new GUIContent(countText);
+            float countW = EditorStyles.miniLabel.CalcSize(countContent).x + 8f;
+            Rect countRect = new Rect(plusX - countW - 4f, titleBarRect.y, countW, titleBarRect.height);
+            // Foldout fills space between tbX and count label
+            Rect foldRect = new Rect(tbX, titleBarRect.y, countRect.x - tbX - 4f, titleBarRect.height);
+            foldout = EditorGUI.Foldout(foldRect, foldout, new GUIContent(title), true);
+            SessionState.SetBool(foldKey, foldout);
+            EditorGUI.LabelField(countRect, countContent, EditorStyles.miniLabel);
+            if (GUI.Button(new Rect(plusX, titleBarRect.y, 24f, titleBarRect.height), "+", EditorStyles.toolbarButton))
+            {
+                prop.arraySize++;
+                changed = true;
+            }
+            if (GUI.Button(new Rect(minusX, titleBarRect.y, 24f, titleBarRect.height), "-", EditorStyles.toolbarButton))
+            {
+                if (prop.arraySize > 0) { prop.arraySize--; changed = true; }
+            }
+            EditorGUI.indentLevel = oldIndent;
+
+            if (foldout)
+            {
+            // Column headers with drag handles
+            if (colCount > 0)
+            {
+                var headerRect = EditorGUILayout.GetControlRect(false, 20f);
+                EditorGUI.DrawRect(headerRect, new Color(0.3f, 0.3f, 0.3f, 0.4f));
+                float x = headerRect.x;
+                // Index column header
+                EditorGUI.LabelField(new Rect(x, headerRect.y, indexColW, headerRect.height), "#", EditorStyles.boldLabel);
+                x += indexColW;
+                // Column headers with drag handles
+                for (int c = 0; c < colCount; c++)
+                {
+                    float cw = colWidths[c];
+                    EditorGUI.LabelField(new Rect(x, headerRect.y, cw - dragHandleW, headerRect.height),
+                        ObjectNames.NicifyVariableName(columnNames[c]), EditorStyles.boldLabel);
+                    // Drag handle area
+                    Rect handleRect = new Rect(x + cw - dragHandleW, headerRect.y, dragHandleW, headerRect.height);
+                    EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
+                    EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
+                    if (ev != null && ev.type == EventType.MouseDown && handleRect.Contains(ev.mousePosition))
+                    {
+                        _draggingTablePath = tableKey;
+                        _draggingColumnIndex = c;
+                        ev.Use();
+                    }
+                    x += cw;
+                }
+                // Header bottom border
+                EditorGUI.DrawRect(new Rect(headerRect.x, headerRect.yMax - 1, headerRect.width, 1),
+                    new Color(0.5f, 0.5f, 0.5f, 0.6f));
+                GUILayout.Space(headerRect.height);
+            }
+
+            // Data rows
+            string tlShowAllKey = "TaoTie_ShowAll_InsTL_" + entry.PropertyPath;
+            bool tlShowAll = SessionState.GetBool(tlShowAllKey, false);
+            int tlVisibleCount = tlShowAll ? prop.arraySize : Mathf.Min(prop.arraySize, k_MaxVisibleRows);
+
+            for (int i = 0; i < tlVisibleCount; i++)
+            {
+                var element = prop.GetArrayElementAtIndex(i);
+                var rowRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight + 2f);
+                if (i % 2 == 1)
+                    EditorGUI.DrawRect(rowRect, new Color(0.5f, 0.5f, 0.5f, 0.1f));
+
+                float x = rowRect.x;
+                // Index
+                EditorGUI.LabelField(new Rect(x, rowRect.y, indexColW, rowRect.height), i.ToString());
+                x += indexColW;
+
+                if (colCount > 0)
+                {
+                    var elIter = element.Copy();
+                    int targetDepth = element.depth + 1;
+                    int colIdx = 0;
+                    if (elIter.NextVisible(true))
+                    {
+                        do
+                        {
+                            if (elIter.depth != targetDepth) break;
+                            if (colIdx < colCount)
+                            {
+                                float cw = colWidths[colIdx];
+                                Rect fieldRect = new Rect(x, rowRect.y, cw - dragHandleW, rowRect.height);
+                                EditorGUI.BeginChangeCheck();
+                                EditorGUI.PropertyField(fieldRect, elIter, GUIContent.none, false);
+                                if (EditorGUI.EndChangeCheck())
+                                    changed = true;
+                                x += cw;
+                                colIdx++;
+                            }
+                        } while (elIter.NextVisible(false));
+                    }
+                }
+                else
+                {
+                    EditorGUI.BeginChangeCheck();
+                    EditorGUI.PropertyField(new Rect(x, rowRect.y, defaultColW, rowRect.height),
+                        element, GUIContent.none, false);
+                    if (EditorGUI.EndChangeCheck())
+                        changed = true;
+                }
+
+                // Delete button
+                Rect delRect = new Rect(x, rowRect.y, deleteColW, rowRect.height);
+                if (GUI.Button(delRect, "×"))
+                {
+                    prop.DeleteArrayElementAtIndex(i);
+                    changed = true;
+                    break;
+                }
+
+                // Row bottom grid line
+                EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.yMax - 1, rowRect.width, 1),
+                    new Color(0.3f, 0.3f, 0.3f, 0.3f));
+            }
+
+                // Show All / Show Less toggle
+                if (prop.arraySize > k_MaxVisibleRows)
+                {
+                    if (GUILayout.Button(tlShowAll ? $"Show Less ({k_MaxVisibleRows})" : $"Show All ({prop.arraySize})", EditorStyles.miniButton))
+                    {
+                        SessionState.SetBool(tlShowAllKey, !tlShowAll);
+                    }
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(2);
+            return changed;
+        }
+
+        /// <summary>
+        /// Draw a plain array/list in box+grid style, matching TableList layout.
+        /// Each element is drawn as a single-line PropertyField with index label and delete button.
+        /// </summary>
+        private static bool DrawArrayBox(TaoTiePropertyEntry entry)
+        {
+            var prop = entry.Property;
+            bool changed = false;
+            int arraySizeBefore = prop.arraySize;
+            var label = GetLabel(entry);
+            string title = label?.text ?? prop.displayName;
+            float indexColW = 28f;
+            float deleteColW = 22f;
+            float availableWidth = EditorGUIUtility.currentViewWidth - 40f;
+            float fieldColW = Mathf.Max(50f, availableWidth - indexColW - deleteColW);
+
+            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            EditorGUILayout.BeginVertical(boxStyle);
+
+            // Foldout title bar with + / - controls
+            string foldKey = "TaoTie_Fold_Array_" + entry.PropertyPath;
+            bool foldout = SessionState.GetBool(foldKey, false);
+            // Reset indent for title bar so Foldout doesn't add extra offset
+            int oldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            Rect titleBarRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            EditorGUI.DrawRect(titleBarRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
+            float tbX = titleBarRect.x + 14f;
+            // Anchor buttons to right edge (xMax is indent-independent)
+            float minusX = titleBarRect.xMax - 24f - 2f;
+            float plusX = minusX - 24f - 2f;
+            // Count label before buttons
+            string countText = $"({prop.arraySize})";
+            var countContent = new GUIContent(countText);
+            float countW = EditorStyles.miniLabel.CalcSize(countContent).x + 8f;
+            Rect countRect = new Rect(plusX - countW - 4f, titleBarRect.y, countW, titleBarRect.height);
+            // Foldout fills space between tbX and count label
+            Rect foldRect = new Rect(tbX, titleBarRect.y, countRect.x - tbX - 4f, titleBarRect.height);
+            foldout = EditorGUI.Foldout(foldRect, foldout, new GUIContent(title), true);
+            SessionState.SetBool(foldKey, foldout);
+            EditorGUI.LabelField(countRect, countContent, EditorStyles.miniLabel);
+            if (GUI.Button(new Rect(plusX, titleBarRect.y, 24f, titleBarRect.height), "+", EditorStyles.toolbarButton))
+            {
+                prop.arraySize++;
+                changed = true;
+            }
+            if (GUI.Button(new Rect(minusX, titleBarRect.y, 24f, titleBarRect.height), "-", EditorStyles.toolbarButton))
+            {
+                if (prop.arraySize > 0) { prop.arraySize--; changed = true; }
+            }
+            EditorGUI.indentLevel = oldIndent;
+
+            if (foldout)
+            {
+                string abShowAllKey = "TaoTie_ShowAll_AB_" + entry.PropertyPath;
+                bool abShowAll = SessionState.GetBool(abShowAllKey, false);
+                int abVisibleCount = abShowAll ? prop.arraySize : Mathf.Min(prop.arraySize, k_MaxVisibleRows);
+
+                for (int i = 0; i < abVisibleCount; i++)
+                {
+                    var element = prop.GetArrayElementAtIndex(i);
+                    var rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight + 2f);
+                    if (i % 2 == 1)
+                        EditorGUI.DrawRect(rowRect, new Color(0.5f, 0.5f, 0.5f, 0.1f));
+
+                    float x = rowRect.x;
+                    // Index
+                    EditorGUI.LabelField(new Rect(x, rowRect.y, indexColW, rowRect.height), i.ToString());
+                    x += indexColW;
+
+                    // Field
+                    Rect fieldRect = new Rect(x, rowRect.y, fieldColW, rowRect.height);
+                    EditorGUI.BeginChangeCheck();
+                    EditorGUI.PropertyField(fieldRect, element, GUIContent.none, true);
+                    if (EditorGUI.EndChangeCheck())
+                        changed = true;
+                    x += fieldColW;
+
+                    // Delete button
+                    Rect delRect = new Rect(x, rowRect.y, deleteColW, rowRect.height);
+                    if (GUI.Button(delRect, "×"))
+                    {
+                        prop.DeleteArrayElementAtIndex(i);
+                        changed = true;
+                        break;
+                    }
+
+                    // Row bottom grid line
+                    EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.yMax - 1, rowRect.width, 1),
+                        new Color(0.3f, 0.3f, 0.3f, 0.3f));
+                }
+
+                // Show All / Show Less toggle
+                if (prop.arraySize > k_MaxVisibleRows)
+                {
+                    if (GUILayout.Button(abShowAll ? $"Show Less ({k_MaxVisibleRows})" : $"Show All ({prop.arraySize})", EditorStyles.miniButton))
+                    {
+                        SessionState.SetBool(abShowAllKey, !abShowAll);
+                    }
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(2);
+
+            if (changed && prop.arraySize != arraySizeBefore)
+            {
+                if (entry.OnCollectionChanged != null)
+                    _pendingCollectionChangedCallbacks.Add((entry, null));
+            }
+
+            return changed;
+        }
+
+        /// <summary>
+        /// Resolve a FieldInfo from a property path (e.g. "obj.field") on the root target.
+        /// </summary>
+        private static FieldInfo ResolveFieldFromPath(object rootTarget, string propertyPath)
+        {
+            if (string.IsNullOrEmpty(propertyPath)) return null;
+            var parts = propertyPath.Split('.');
+            Type currentType = rootTarget.GetType();
+            FieldInfo result = null;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+            foreach (var part in parts)
+            {
+                if (currentType == null) return null;
+                result = currentType.GetField(part, flags);
+                Type baseType = currentType.BaseType;
+                while (result == null && baseType != null && baseType != typeof(object))
+                {
+                    result = baseType.GetField(part, flags);
+                    baseType = baseType.BaseType;
+                }
+                if (result == null) return null;
+                currentType = result.FieldType;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// For nested properties (e.g. "obj.field"), traverse the root target
+        /// to find the actual object that holds the field/method.
+        /// </summary>
+        private static object ResolveConditionTarget(object rootTarget, TaoTiePropertyEntry entry)
+        {
+            if (rootTarget == null || string.IsNullOrEmpty(entry.PropertyPath))
+                return rootTarget;
+            if (!entry.PropertyPath.Contains('.'))
+                return rootTarget;
+
+            string[] parts = entry.PropertyPath.Split('.');
+            object current = rootTarget;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+            for (int i = 0; i < parts.Length - 1 && current != null; i++)
+            {
+                var type = current.GetType();
+                var field = type.GetField(parts[i], flags);
+                if (field == null)
+                {
+                    Type baseType = type.BaseType;
+                    while (field == null && baseType != null && baseType != typeof(object))
+                    {
+                        field = baseType.GetField(parts[i], flags);
+                        baseType = baseType.BaseType;
+                    }
+                }
+                if (field == null) return rootTarget;
+                current = field.GetValue(current);
+            }
+            return current ?? rootTarget;
+        }
+
+        /// <summary>
+        /// Resolve TypeFilter method to get a list of types.
+        /// Supports three return value types:
+        /// 1. IEnumerable<Type> — direct type list
+        /// 2. IEnumerable<ValueDropdownItem> — ValueDropdownItem.Value should be a Type
+        /// 3. List<int> or other IEnumerable — values are used as-is (type = value.GetType())
+        /// </summary>
+        private static List<Type> ResolveTypeFilter(string filterGetter, object target, TaoTiePropertyEntry entry)
+        {
+            var result = new List<Type>();
+            var condTarget = ResolveConditionTarget(target, entry);
+            var searchType = entry.DeclaringType ?? condTarget?.GetType() ?? target.GetType();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+
+            var method = searchType.GetMethod(filterGetter, flags);
+            if (method == null)
+            {
+                // Try on root target type
+                method = target.GetType().GetMethod(filterGetter, flags);
+            }
+            if (method != null)
+            {
+                var invokeTarget = method.IsStatic ? null : (condTarget ?? target);
+                var retVal = method.Invoke(invokeTarget, null);
+                if (retVal is IEnumerable enumerable)
+                {
+                    foreach (var item in enumerable)
+                    {
+                        // Case 1: item is already a Type
+                        if (item is Type t)
+                        {
+                            result.Add(t);
+                        }
+                        // Case 2: item is a ValueDropdownItem — extract Value
+                        else if (item is ValueDropdownItem vdi)
+                        {
+                            if (vdi.Value is Type vt)
+                                result.Add(vt);
+                            else if (vdi.Value != null)
+                                result.Add(vdi.Value.GetType());
+                        }
+                        // Case 3: item is IValueDropdownItem — extract GetValue
+                        else if (item is IValueDropdownItem ivdi)
+                        {
+                            var val = ivdi.GetValue();
+                            if (val is Type vt2)
+                                result.Add(vt2);
+                            else if (val != null)
+                                result.Add(val.GetType());
+                        }
+                        // Case 4: item is a plain value (e.g. int from List<int>)
+                        else if (item != null)
+                        {
+                            result.Add(item.GetType());
+                        }
+                    }
+                }
+            }
+
+            // Fallback: if no method found, return all non-abstract subclasses
+            if (result.Count == 0 && entry.DeclaringType != null)
+            {
+                var fieldType = entry.DeclaringType;
+                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    foreach (var t in asm.GetTypes())
+                    {
+                        if (t.IsClass && !t.IsAbstract && fieldType.IsAssignableFrom(t))
+                            result.Add(t);
+                    }
+                }
+            }
+
+            return result;
+        }
+    }
+}

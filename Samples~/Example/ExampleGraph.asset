@@ -1,0 +1,562 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-8883139599177882027
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges:
+  - fb2ea4c3-47e4-4e98-b2a7-ef18b152bdab
+  direction: 0
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 310
+  x: 0
+  y: 62
+  id: 09a6e5fd-22ed-4620-8f8f-2bc6f8e0deb4
+  nodeId: 7626daf7-ee75-4c44-bc19-3fae9d5cc07a
+  portName: InputName1
+--- !u!114 &-8763170277359439343
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges: []
+  direction: 1
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 1640
+  x: 0
+  y: 3886
+  id: 1c5e5afe-ea67-4b52-9dce-e2ad6c248536
+  nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  portName: OutputName1
+--- !u!114 &-7798920520701973103
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges: []
+  direction: 1
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 310
+  x: 0
+  y: 91
+  id: 2cece95b-9f70-4b3d-91a9-d616676fc09c
+  nodeId: 7626daf7-ee75-4c44-bc19-3fae9d5cc07a
+  portName: DefaultOutputName
+--- !u!114 &-4555061153860153152
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27b82ac7e52ca6f4f8b93bb55a1f0612, type: 3}
+  m_Name: Edge
+  m_EditorClassIdentifier: 
+  id: fb2ea4c3-47e4-4e98-b2a7-ef18b152bdab
+  inputNodeId: 7626daf7-ee75-4c44-bc19-3fae9d5cc07a
+  inputPortId: 09a6e5fd-22ed-4620-8f8f-2bc6f8e0deb4
+  outputNodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  outputPortId: 9eac6e0f-06c8-4726-8c1c-edc2264d71db
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5feafbbed10fff34f9ee7e8f0db142d5, type: 3}
+  m_Name: ExampleGraph
+  m_EditorClassIdentifier: 
+  showNodeViewDetails: 1
+  currentPanOffset: {x: 1118.2809, y: -503.74255}
+  currentZoom: 0.8
+  windowID: 161
+  startNodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  leftInRightOut: 0
+  values:
+  - {fileID: 3844238699945285271}
+  - {fileID: 6487314823040748988}
+  edges:
+  - {fileID: -4555061153860153152}
+  groups: []
+--- !u!114 &382414986894085674
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges:
+  - fb2ea4c3-47e4-4e98-b2a7-ef18b152bdab
+  direction: 1
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 1640
+  x: 0
+  y: 3862
+  id: 9eac6e0f-06c8-4726-8c1c-edc2264d71db
+  nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  portName: OutputName
+--- !u!114 &1799811943457053574
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges: []
+  direction: 0
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 1640
+  x: 0
+  y: 38
+  id: 85785139-08ff-4f1e-ba1b-da1aaefb7bc5
+  nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  portName: InputName
+--- !u!114 &2889081221192874538
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges: []
+  direction: 0
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 310
+  x: 0
+  y: 38
+  id: ade6c41d-9cf7-45a8-b1c9-a8fd9b3bdefb
+  nodeId: 7626daf7-ee75-4c44-bc19-3fae9d5cc07a
+  portName: InputName
+--- !u!114 &3844238699945285271
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6cfce2b9293348640938fbd69608035a, type: 3}
+  m_Name: Node
+  m_EditorClassIdentifier: 
+  inputPorts:
+  - {fileID: 2889081221192874538}
+  - {fileID: -8883139599177882027}
+  outputPorts:
+  - {fileID: -7798920520701973103}
+  allowDuplicateNodeName: 0
+  allowEmptyNodeName: 0
+  canBeDeleted: 1
+  height: 135
+  width: 310
+  x: -144
+  y: -1884
+  minimumInputPortsCount: 0
+  minimumOutputPortsCount: 0
+  id: 7626daf7-ee75-4c44-bc19-3fae9d5cc07a
+  isHovered: 0
+  errorNodeNameIsEmpty: 0
+  errorDuplicateNameFoundInGraph: 0
+  ping: 0
+  Text: 
+  Number: 10
+  NumberValueDropdown: 10
+  Vector4: {x: 0, y: 0, z: 0, w: 0}
+  Ignore: 0
+  Range: 0
+  Color: {r: 0, g: 0, b: 0, a: 0}
+  TestClass:
+    TestClassText: 
+    innerNumber: 0
+  IntArray: 
+  RectList: []
+  TestClasses: []
+  Path: 
+  AnimationCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  Rect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 0
+    height: 0
+  NodeBase: {fileID: 0}
+  attack: 10
+  defense: 5
+  criticalRate: 0.1
+  showAdvanced: 0
+  damageType: 0
+  nodeColor: {r: 1, g: 1, b: 1, a: 1}
+  nodeVolume: 0.8
+  nodeSpeed: 5
+  nodeConfigId: Node_001
+  editorDisabled: disabled in edit mode
+  clampedValue: 50
+  disableTest: disabled when showAdvanced
+  enableTest: enabled when showAdvanced
+  showWhenNotAdvanced: visible when !showAdvanced
+  hideWhenAdvanced: hidden when showAdvanced
+  flagA: 1
+  flagB: 0
+  complexExpr: (A||B)&&!showAdvanced
+  tableData:
+  - name: A
+    value: 1
+  requiredNode: {fileID: 0}
+  TaoTieInspectorObject:
+    characterName: Hero
+    level: 1
+    maxHealth: 100
+    attack: 10
+    defense: 5
+    criticalRate: 0.1
+    criticalDamage: 1.5
+    showAdvanced: 0
+    damageType: 0
+    characterColor: {r: 1, g: 1, b: 1, a: 1}
+    volume: 0.8
+    moveSpeed: 5
+    jumpHeight: 3
+    configId: TT_001
+    disabledTest: Disabled when level > 0
+    enabledTest: Enabled when showAdvanced is true
+    IsGlobal: 0
+    EnableVision: 1
+    ViewPanoramic: 0
+    showWhenNotGlobal: Visible when IsGlobal=false
+    showWhenVisionAndNotPanoramic: Visible when EnableVision && !ViewPanoramic
+    showWhenComplexExpr: Visible when (IsGlobal||EnableVision)&&!ViewPanoramic
+    hideWhenGlobalAndPanoramic: Hidden when IsGlobal && ViewPanoramic
+    watchedName: initial
+  nCondA: 1
+  nCondB: 0
+  nCondC: 1
+  nHideIfExpr: HideIf @!nCondA
+  nEnableIfExpr: EnableIf (A&&C)||!B
+  nDisableIfExpr: DisableIf !C||B
+  nShowIfEqualExpr: ShowIf A==C
+  nVec2: {x: 1, y: 2}
+  nVec3: {x: 1, y: 2, z: 3}
+  nVec4: {x: 1, y: 2, z: 3, w: 4}
+  nVec2Int: {x: 1, y: 2}
+  nVec3Int: {x: 1, y: 2, z: 3}
+  nDeepL1: level1
+  nDeepL2: level2
+  nDeepL1Float: 3.14
+  nOnChangeTest: 42
+  nRangeMin: 0
+  nRangeMax: 10
+  nDynamicRangeValue: 0
+  nFlagsEnum: 3
+  nReadOnlyString: can't edit
+  nReadOnlyInt: 999
+  nGroupedReadOnly: grouped ro
+  nCallbackList:
+  - alpha
+  - beta
+  nCallbackArray: 0a000000140000001e000000
+  nDropdownIntList: 010000000200000003000000
+  nDropdownIntArray: 0a000000140000001e000000
+  nDropdownAppendList: 64000000c8000000
+  nDropdownAppendArray: 070000000e000000
+  nDropdownStringList:
+  - alpha
+  - beta
+  nDropdownEnumList: 0100000002000000
+  nStateWatchedField: watched
+  nHiddenInDetails: only in node view
+  nHiddenInNodeView: only in details
+  nToolTipName: Node
+  nToolTipCount: 5
+  nToolTipRating: 7.5
+  nToolTipMode: 1
+  TooltipTestEntry:
+    entryName: 
+    entryCount: 0
+    rating: 0
+    tipMode: 0
+    conditionalTip: conditional
+    showDetail: 0
+--- !u!114 &5333125683244270892
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges: []
+  direction: 1
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 1640
+  x: 0
+  y: 3910
+  id: ac5742c2-9f7a-4924-8034-0c3dd0359c88
+  nodeId: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  portName: OutputName2
+--- !u!114 &6487314823040748988
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6cfce2b9293348640938fbd69608035a, type: 3}
+  m_Name: Node
+  m_EditorClassIdentifier: 
+  inputPorts:
+  - {fileID: 1799811943457053574}
+  outputPorts:
+  - {fileID: 382414986894085674}
+  - {fileID: -8763170277359439343}
+  - {fileID: 5333125683244270892}
+  allowDuplicateNodeName: 0
+  allowEmptyNodeName: 0
+  canBeDeleted: 1
+  height: 3954
+  width: 1640
+  x: -1764
+  y: -1608
+  minimumInputPortsCount: 0
+  minimumOutputPortsCount: 0
+  id: 2567d6d3-e7c0-4323-a5a9-fd55aae073ab
+  isHovered: 0
+  errorNodeNameIsEmpty: 0
+  errorDuplicateNameFoundInGraph: 0
+  ping: 0
+  Text: 
+  Number: 10
+  NumberValueDropdown: 10
+  Vector4: {x: 0, y: 0, z: 0, w: 0}
+  Ignore: 0
+  Range: -17.64
+  Color: {r: 0, g: 0, b: 0, a: 0}
+  TestClass:
+    TestClassText: 
+    innerNumber: 0
+  IntArray: 
+  RectList: []
+  TestClasses: []
+  Path: 
+  AnimationCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  Rect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 0
+    height: 0
+  NodeBase: {fileID: 0}
+  attack: 10
+  defense: 5
+  criticalRate: 0.1
+  showAdvanced: 1
+  damageType: 0
+  nodeColor: {r: 1, g: 1, b: 1, a: 1}
+  nodeVolume: 0.8
+  nodeSpeed: 5
+  nodeConfigId: Node_001
+  editorDisabled: disabled in edit mode
+  clampedValue: 50
+  disableTest: disabled when showAdvanced
+  enableTest: enabled when showAdvanced
+  showWhenNotAdvanced: visible when !showAdvanced
+  hideWhenAdvanced: hidden when showAdvanced
+  flagA: 1
+  flagB: 0
+  complexExpr: (A||B)&&!showAdvanced
+  tableData:
+  - name: A
+    value: 1
+  requiredNode: {fileID: 0}
+  TaoTieInspectorObject:
+    characterName: Hero
+    level: 1
+    maxHealth: 100
+    attack: 10
+    defense: 5
+    criticalRate: 0.1
+    criticalDamage: 1.5
+    showAdvanced: 0
+    damageType: 0
+    characterColor: {r: 1, g: 1, b: 1, a: 1}
+    volume: 0.8
+    moveSpeed: 5
+    jumpHeight: 3
+    configId: TT_001
+    disabledTest: Disabled when level > 0
+    enabledTest: Enabled when showAdvanced is true
+    IsGlobal: 0
+    EnableVision: 1
+    ViewPanoramic: 0
+    showWhenNotGlobal: Visible when IsGlobal=false
+    showWhenVisionAndNotPanoramic: Visible when EnableVision && !ViewPanoramic
+    showWhenComplexExpr: Visible when (IsGlobal||EnableVision)&&!ViewPanoramic
+    hideWhenGlobalAndPanoramic: Hidden when IsGlobal && ViewPanoramic
+    watchedName: initial
+  nCondA: 1
+  nCondB: 0
+  nCondC: 1
+  nHideIfExpr: HideIf @!nCondA
+  nEnableIfExpr: EnableIf (A&&C)||!B
+  nDisableIfExpr: DisableIf !C||B
+  nShowIfEqualExpr: ShowIf A==C
+  nVec2: {x: 1, y: 2}
+  nVec3: {x: 1, y: 2, z: 3}
+  nVec4: {x: 1, y: 2, z: 3, w: 4}
+  nVec2Int: {x: 1, y: 2}
+  nVec3Int: {x: 1, y: 2, z: 3}
+  nDeepL1: level1
+  nDeepL2: level2
+  nDeepL1Float: 3.14
+  nOnChangeTest: 42
+  nRangeMin: 0
+  nRangeMax: 10
+  nDynamicRangeValue: 0
+  nFlagsEnum: 3
+  nReadOnlyString: can't edit
+  nReadOnlyInt: 999
+  nGroupedReadOnly: grouped ro
+  nCallbackList:
+  - alpha
+  - beta
+  nCallbackArray: 0a000000140000001e000000
+  nDropdownIntList: 0200000003000000
+  nDropdownIntArray: 000000000000000000000000
+  nDropdownAppendList: 64000000c8000000
+  nDropdownAppendArray: 070000000e000000
+  nDropdownStringList:
+  - alpha
+  - beta
+  nDropdownEnumList: 0100000002000000
+  nStateWatchedField: watched
+  nHiddenInDetails: only in node view
+  nHiddenInNodeView: only in details
+  nToolTipName: Node
+  nToolTipCount: 5
+  nToolTipRating: 0.131
+  nToolTipMode: 1
+  TooltipTestEntry:
+    entryName: 
+    entryCount: 0
+    rating: 0
+    tipMode: 0
+    conditionalTip: conditional
+    showDetail: 0
+--- !u!114 &8558072633696033768
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d6fcb6c5bc020b4ba4541c9c52bdf6b, type: 3}
+  m_Name: Port
+  m_EditorClassIdentifier: 
+  edgeType: 0
+  edges: []
+  direction: 1
+  edgeMode: 1
+  canBeDeleted: 1
+  canBeReordered: 1
+  curveModifier: 0
+  height: 24
+  width: 310
+  x: 0
+  y: 58
+  id: 84cccb6c-30c2-4745-b987-ca9d1ee5d50b
+  nodeId: f5a7f6ae-8343-4854-94b5-1f7a5c82832c
+  portName: DefaultOutputName

@@ -1,0 +1,13 @@
+{
+    "name": "com.taotie.inspector",
+    "version": "1.0.0",
+    "displayName": "TaoTie Inspector",
+    "description": "Odin-like inspector attributes, unified Graph/Inspector drawing system, and node graph editor for Unity — without Odin dependency.",
+    "samples": [
+        {
+            "displayName": "Example",
+            "description": "Example scenes and scripts demonstrating TaoTie Inspector attributes, graph editor, and UI components.",
+            "path": "Samples~/Example"
+        }
+    ]
+}
