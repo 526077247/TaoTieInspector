@@ -10,11 +10,22 @@ namespace TaoTie.Inspector.Editor
     {
         private readonly HashSet<string> drawnTabGroups = new();
 
+        // Cached group tree — rebuilt only when entry count changes
+        private GroupNode cachedRoot;
+        private int cachedEntryCount = -1;
+
         public void DrawGroupedEntries(List<GroupEntryData> entries, Action<GroupEntryData> drawProperty)
         {
             drawnTabGroups.Clear();
-            var root = BuildGroupTree(entries);
-            DrawGroupNode(root, null, drawProperty);
+            // Rebuild tree only when structure changes (entry count differs)
+            if (cachedRoot == null || cachedEntryCount != entries.Count)
+            {
+                cachedRoot = BuildGroupTree(entries);
+                cachedEntryCount = entries.Count;
+            }
+            // No need to update tree state — visibility is checked at draw time
+            // since GroupEntryData objects are the same references updated by the caller
+            DrawGroupNode(cachedRoot, null, drawProperty);
         }
 
         #region Group Tree
@@ -38,18 +49,19 @@ namespace TaoTie.Inspector.Editor
             var root = new GroupNode { Name = "", FullPath = "" };
             var nodeMap = new Dictionary<string, GroupNode> { [""] = root };
 
-            // Build a set of container paths for fast lookup
+            // Build a set of ALL container paths (regardless of current visibility)
+            // so children are always assigned to their container, even if visibility changes later
             var containerPaths = new HashSet<string>();
             foreach (var entry in entries)
             {
-                if (entry.Visible && entry.IsFoldoutContainer)
+                if (entry.IsFoldoutContainer)
                     containerPaths.Add(entry.ContainerPath);
             }
 
+            // Build tree with ALL entries — visibility is checked at draw time.
+            // This allows ShowIf/HideIf to toggle visibility without rebuilding the tree.
             foreach (var entry in entries)
             {
-                if (!entry.Visible) continue;
-
                 // [Serializable] nested object container
                 if (entry.IsFoldoutContainer)
                 {
@@ -157,6 +169,7 @@ namespace TaoTie.Inspector.Editor
             foreach (var entry in node.DirectEntries)
             {
                 if (entry.IsFoldoutContainer) continue;
+                if (!entry.Visible) continue;
                 drawProperty(entry);
             }
 
@@ -172,8 +185,18 @@ namespace TaoTie.Inspector.Editor
             // [Serializable] foldout container
             if (node.IsFoldoutContainer)
             {
-                var containerEntry = node.DirectEntries.FirstOrDefault(e => e.IsFoldoutContainer);
+                // Find the container entry without LINQ allocation
+                GroupEntryData containerEntry = null;
+                for (int i = 0; i < node.DirectEntries.Count; i++)
+                {
+                    if (node.DirectEntries[i].IsFoldoutContainer)
+                    {
+                        containerEntry = node.DirectEntries[i];
+                        break;
+                    }
+                }
                 if (containerEntry == null) return;
+                if (!containerEntry.Visible) return;
                 containerEntry.ContainerExpanded = EditorGUILayout.Foldout(containerEntry.ContainerExpanded, containerEntry.ContainerName, true);
                 SessionState.SetBool("TaoTie_Fold_" + containerEntry.ContainerPath, containerEntry.ContainerExpanded);
                 if (!containerEntry.ContainerExpanded) return;
@@ -187,19 +210,33 @@ namespace TaoTie.Inspector.Editor
             if (node.IsTabGroup)
             {
                 string tabGroupKey = node.Parent != null ? node.Parent.FullPath : node.FullPath;
-                var tabChildren = node.Parent?.Children.Where(c => c.IsTabGroup).ToList() ?? new List<GroupNode>();
-                if (tabChildren.Count > 0 && !drawnTabGroups.Contains(tabGroupKey))
+                if (!drawnTabGroups.Contains(tabGroupKey))
                 {
-                    drawnTabGroups.Add(tabGroupKey);
-                    string[] tabLabels = tabChildren.Select(c => c.Name).ToArray();
-                    int currentTab = SessionState.GetInt("TaoTie_Tab_" + tabGroupKey, 0);
-                    currentTab = GUILayout.Toolbar(currentTab, tabLabels);
-                    SessionState.SetInt("TaoTie_Tab_" + tabGroupKey, currentTab);
-                    if (currentTab >= 0 && currentTab < tabChildren.Count)
+                    // Collect tab children without LINQ allocation
+                    var tabChildren = new List<GroupNode>();
+                    if (node.Parent != null)
                     {
-                        EditorGUI.indentLevel++;
-                        DrawGroupNode(tabChildren[currentTab], containerPath, drawProperty);
-                        EditorGUI.indentLevel--;
+                        for (int i = 0; i < node.Parent.Children.Count; i++)
+                        {
+                            if (node.Parent.Children[i].IsTabGroup)
+                                tabChildren.Add(node.Parent.Children[i]);
+                        }
+                    }
+                    if (tabChildren.Count > 0)
+                    {
+                        drawnTabGroups.Add(tabGroupKey);
+                        string[] tabLabels = new string[tabChildren.Count];
+                        for (int i = 0; i < tabChildren.Count; i++)
+                            tabLabels[i] = tabChildren[i].Name;
+                        int currentTab = SessionState.GetInt("TaoTie_Tab_" + tabGroupKey, 0);
+                        currentTab = GUILayout.Toolbar(currentTab, tabLabels);
+                        SessionState.SetInt("TaoTie_Tab_" + tabGroupKey, currentTab);
+                        if (currentTab >= 0 && currentTab < tabChildren.Count)
+                        {
+                            EditorGUI.indentLevel++;
+                            DrawGroupNode(tabChildren[currentTab], containerPath, drawProperty);
+                            EditorGUI.indentLevel--;
+                        }
                     }
                 }
                 return;

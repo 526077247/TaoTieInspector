@@ -17,6 +17,18 @@ namespace TaoTie.Inspector.Editor
         private bool useEnhancedDrawing;
         private bool initialized;
 
+        // Cached intermediate data — rebuilt only when type changes or managed-ref structure changes
+        private List<TaoTiePropertyEntry> cachedMergedEntries;
+        private List<GroupEntryData> cachedGroupEntries;
+        private string[] cachedManagedRefBasePathArray;
+        private string[] cachedTableListPathArray;
+        private Type cachedTargetType;
+
+        // Profiling — disabled
+        // private System.Diagnostics.Stopwatch _sw = new System.Diagnostics.Stopwatch();
+        // private int _profileCount;
+        // private float _soUpdateMs, _buildEntriesMs, _refreshMs, _drawMs, _applyMs, _totalMs;
+
         private void Initialize()
         {
             if (initialized) return;
@@ -39,6 +51,11 @@ namespace TaoTie.Inspector.Editor
             }
 
             initialized = true;
+            cachedMergedEntries = null;
+            cachedGroupEntries = null;
+            cachedManagedRefBasePathArray = null;
+            cachedTableListPathArray = null;
+            cachedTargetType = null;
         }
 
         protected void OnEnable()
@@ -71,6 +88,9 @@ namespace TaoTie.Inspector.Editor
                 TaoTiePropertyLayout.ApplyPendingManagedReferences(serializedObject);
                 serializedObject.ApplyModifiedProperties();
                 serializedObject.Update();
+                // Invalidate cached structures — managed ref structure changed
+                cachedMergedEntries = null;
+                cachedGroupEntries = null;
             }
 
             var entries = processor.BuildEntries(serializedObject);
@@ -79,110 +99,21 @@ namespace TaoTie.Inspector.Editor
             // Set all entries for DrawArrayBox to find child entries (LabelText etc.)
             TaoTiePropertyLayout.SetAllEntries(entries);
 
-            // Build a merged list of SerializedProperty entries AND unserialized fields (Dictionary etc.)
-            // in declaration order, so Dictionary fields appear at their correct position among siblings.
-            var mergedEntries = BuildMergedEntries(entries, target);
-
-            // Convert to GroupEntryData and draw via unified TaoTieGroupManager
-            var groupEntries = ConvertToGroupData(mergedEntries);
-
-            // Insert button entries at correct declaration-order positions
-            var buttonMethods = processor.GetButtonMethods(target.GetType());
-            if (buttonMethods != null && buttonMethods.Count > 0)
+            // Rebuild cached structures only when type changes or cache was invalidated
+            if (cachedMergedEntries == null || cachedTargetType != target.GetType())
             {
-                // Build a map of field name → index in groupEntries
-                var fieldIndexMap = new Dictionary<string, int>();
-                for (int i = 0; i < groupEntries.Count; i++)
-                {
-                    var e = groupEntries[i].UserData as TaoTiePropertyEntry;
-                    if (e != null && !string.IsNullOrEmpty(e.PropertyName))
-                        fieldIndexMap[e.PropertyName] = i;
-                }
-                // Build a map of field MetadataToken for ordering
-                var typeHierarchy = new List<Type>();
-                Type currentType = target.GetType();
-                while (currentType != null && currentType != typeof(object))
-                {
-                    typeHierarchy.Insert(0, currentType);
-                    currentType = currentType.BaseType;
-                }
-                // Collect fields with their MetadataToken
-                var fieldTokens = new Dictionary<string, int>();
-                foreach (var t in typeHierarchy)
-                {
-                    foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-                    {
-                        fieldTokens[f.Name] = f.MetadataToken;
-                    }
-                }
-                // Create button entries and insert at correct positions
-                var insertList = new List<(int index, GroupEntryData data)>();
-                foreach (var method in buttonMethods)
-                {
-                    var btnEntry = new GroupEntryData
-                    {
-                        Visible = true,
-                        UserData = method
-                    };
-                    // Find insertion index based on MetadataToken
-                    int insertAt = groupEntries.Count;
-                    for (int i = groupEntries.Count - 1; i >= 0; i--)
-                    {
-                        var e = groupEntries[i].UserData as TaoTiePropertyEntry;
-                        if (e != null && fieldTokens.TryGetValue(e.PropertyName, out var token) && token < method.MetadataToken)
-                        {
-                            insertAt = i + 1;
-                            break;
-                        }
-                    }
-                    insertList.Add((insertAt, btnEntry));
-                }
-                // Insert in reverse order to preserve indices
-                insertList.Sort((a, b) => b.index.CompareTo(a.index));
-                foreach (var (index, data) in insertList)
-                    groupEntries.Insert(index, data);
+                cachedMergedEntries = BuildMergedEntries(entries, target);
+                cachedGroupEntries = ConvertToGroupData(cachedMergedEntries);
+                InsertButtonEntries(cachedGroupEntries);
+                cachedManagedRefBasePathArray = CollectManagedRefBasePaths(cachedMergedEntries);
+                cachedTableListPathArray = CollectTableListPaths(cachedMergedEntries);
+                cachedTargetType = target.GetType();
             }
 
-            // Collect paths of managed reference fields (TypeFilter / HideReferenceObjectPicker)
-            // whose children should be skipped (drawn manually inside the parent's foldout)
-            var managedRefPaths = new HashSet<string>();
-            foreach (var e in mergedEntries)
-            {
-                try
-                {
-                    if ((e.TypeFilter != null || e.HideReferenceObjectPicker != null)
-                        && e.Property != null
-                        && e.Property.propertyType == SerializedPropertyType.ManagedReference)
-                    {
-                        managedRefPaths.Add(e.PropertyPath + ".");
-                    }
-                }
-                catch { /* property may be disposed after array element deletion */ }
-            }
-            // Collect pending managed reference clear paths
-            var pendingClearPaths = TaoTiePropertyLayout.GetPendingClearPaths();
-            foreach (var p in pendingClearPaths)
-                managedRefPaths.Add(p + ".");
+            // Per-frame: sync visibility from entries to cached GroupEntryData
+            SyncGroupEntryVisibility(cachedGroupEntries, cachedManagedRefBasePathArray, cachedTableListPathArray);
 
-            // Skip children of managed reference fields
-            if (managedRefPaths.Count > 0)
-            {
-                foreach (var ge in groupEntries)
-                {
-                    if (!ge.Visible) continue;
-                    var e = ge.UserData as TaoTiePropertyEntry;
-                    if (e?.PropertyPath == null) continue;
-                    foreach (var mrefPath in managedRefPaths)
-                    {
-                        if (e.PropertyPath.StartsWith(mrefPath))
-                        {
-                            ge.Visible = false;
-                            break;
-                        }
-                    }
-                }
-            }
-            groupManager.DrawGroupedEntries(groupEntries, data =>
+            groupManager.DrawGroupedEntries(cachedGroupEntries, data =>
             {
                 if (data.UserData is TaoTiePropertyEntry entry)
                 {
@@ -198,6 +129,166 @@ namespace TaoTie.Inspector.Editor
             TaoTiePropertyLayout.ApplyPendingManagedReferences(serializedObject);
             serializedObject.ApplyModifiedProperties();
             TaoTiePropertyLayout.FlushPendingCallbacks();
+        }
+
+        /// <summary>
+        /// Insert button entries at correct declaration-order positions (uses MetadataToken).
+        /// Called only when cache is rebuilt.
+        /// </summary>
+        private void InsertButtonEntries(List<GroupEntryData> groupEntries)
+        {
+            var buttonMethods = processor.GetButtonMethods(target.GetType());
+            if (buttonMethods == null || buttonMethods.Count == 0) return;
+
+            // Build field MetadataToken map for ordering
+            var typeHierarchy = new List<Type>();
+            Type currentType = target.GetType();
+            while (currentType != null && currentType != typeof(object))
+            {
+                typeHierarchy.Insert(0, currentType);
+                currentType = currentType.BaseType;
+            }
+            var fieldTokens = new Dictionary<string, int>();
+            foreach (var t in typeHierarchy)
+            {
+                foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                {
+                    fieldTokens[f.Name] = f.MetadataToken;
+                }
+            }
+
+            var insertList = new List<(int index, GroupEntryData data)>();
+            foreach (var method in buttonMethods)
+            {
+                var btnEntry = new GroupEntryData { Visible = true, UserData = method };
+                int insertAt = groupEntries.Count;
+                for (int i = groupEntries.Count - 1; i >= 0; i--)
+                {
+                    var e = groupEntries[i].UserData as TaoTiePropertyEntry;
+                    if (e != null && fieldTokens.TryGetValue(e.PropertyName, out var token) && token < method.MetadataToken)
+                    {
+                        insertAt = i + 1;
+                        break;
+                    }
+                }
+                insertList.Add((insertAt, btnEntry));
+            }
+            insertList.Sort((a, b) => b.index.CompareTo(a.index));
+            foreach (var (index, data) in insertList)
+                groupEntries.Insert(index, data);
+        }
+
+        /// <summary>
+        /// Collect static managed-ref base paths (entries with TypeFilter / HideReferenceObjectPicker).
+        /// Called only when cache is rebuilt.
+        /// </summary>
+        private static string[] CollectManagedRefBasePaths(List<TaoTiePropertyEntry> mergedEntries)
+        {
+            var paths = new HashSet<string>();
+            foreach (var e in mergedEntries)
+            {
+                try
+                {
+                    if ((e.TypeFilter != null || e.HideReferenceObjectPicker != null)
+                        && e.Property != null
+                        && e.Property.propertyType == SerializedPropertyType.ManagedReference)
+                    {
+                        paths.Add(e.PropertyPath + ".");
+                    }
+                }
+                catch { /* property may be disposed after array element deletion */ }
+            }
+            var result = new string[paths.Count];
+            paths.CopyTo(result);
+            return result;
+        }
+
+        /// <summary>
+        /// Collect TableList base paths so children can be marked invisible.
+        /// Called only when cache is rebuilt.
+        /// </summary>
+        private static string[] CollectTableListPaths(List<TaoTiePropertyEntry> mergedEntries)
+        {
+            var paths = new HashSet<string>();
+            foreach (var e in mergedEntries)
+            {
+                if (e.TableList != null && e.Property != null && e.Property.isArray)
+                    paths.Add(e.PropertyPath + ".");
+            }
+            var result = new string[paths.Count];
+            paths.CopyTo(result);
+            return result;
+        }
+
+        /// <summary>
+        /// Per-frame: sync Visible from cached entries to GroupEntryData, applying managed-ref
+        /// and TableList path overrides. Dynamic pending clear paths are also applied.
+        /// Uses string[] arrays instead of HashSet to avoid enumerator allocation.
+        /// </summary>
+        private static void SyncGroupEntryVisibility(List<GroupEntryData> groupEntries,
+            string[] managedRefBasePaths, string[] tableListPaths)
+        {
+            // Collect pending managed reference clear paths (dynamic, per-frame)
+            var pendingClearPaths = TaoTiePropertyLayout.GetPendingClearPaths();
+            string[] pendingClearArray = pendingClearPaths.Count > 0
+                ? pendingClearPaths.ToArray()
+                : null;
+
+            bool hasManagedRefOverrides = managedRefBasePaths.Length > 0 || pendingClearArray != null;
+            bool hasTableListOverrides = tableListPaths.Length > 0;
+
+            for (int i = 0; i < groupEntries.Count; i++)
+            {
+                var ge = groupEntries[i];
+                var e = ge.UserData as TaoTiePropertyEntry;
+
+                // Sync base visibility from entry (RefreshDynamicState already updated it)
+                if (e != null)
+                    ge.Visible = e.Visible;
+                else
+                    ge.Visible = true; // button entries are always visible
+
+                if (!ge.Visible) continue;
+                if (e?.PropertyPath == null) continue;
+
+                // TableList path override
+                if (hasTableListOverrides)
+                {
+                    for (int j = 0; j < tableListPaths.Length; j++)
+                    {
+                        if (e.PropertyPath.StartsWith(tableListPaths[j]))
+                        {
+                            ge.Visible = false;
+                            break;
+                        }
+                    }
+                    if (!ge.Visible) continue;
+                }
+
+                // Managed-ref path override (static base paths + dynamic pending clears)
+                if (hasManagedRefOverrides)
+                {
+                    for (int j = 0; j < managedRefBasePaths.Length; j++)
+                    {
+                        if (e.PropertyPath.StartsWith(managedRefBasePaths[j]))
+                        {
+                            ge.Visible = false;
+                            break;
+                        }
+                    }
+                    if (ge.Visible && pendingClearArray != null)
+                    {
+                        for (int j = 0; j < pendingClearArray.Length; j++)
+                        {
+                            if (e.PropertyPath.StartsWith(pendingClearArray[j] + "."))
+                            {
+                                ge.Visible = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>

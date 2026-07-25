@@ -84,6 +84,9 @@ namespace TaoTie.Inspector.Editor
                 if (prop != null) prop.managedReferenceValue = Activator.CreateInstance(type);
             }
             _pendingManagedReferenceSets.Clear();
+
+            // Invalidate type filter cache — managed reference structure changed
+            s_TypeFilterCache.Clear();
         }
 
         public static void DrawProperty(TaoTiePropertyEntry entry, object target)
@@ -169,7 +172,6 @@ namespace TaoTie.Inspector.Editor
                 else
                 {
                     var refType = entry.Property.managedReferenceValue.GetType();
-                    string typeName = LabelResolver.GetTypeLabel(refType);
 
                     bool pendingClear = _pendingManagedReferenceClears.Contains(entry.Property.propertyPath);
                     if (pendingClear)
@@ -472,6 +474,16 @@ namespace TaoTie.Inspector.Editor
                 GUILayout.Space(entry.Space.SpaceAfter);
         }
 
+        private static readonly Dictionary<string, GUIContent> s_LabelCache = new();
+        private static GUIStyle s_BoxStyle;
+
+        private static GUIStyle GetBoxStyle()
+        {
+            if (s_BoxStyle == null)
+                s_BoxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            return s_BoxStyle;
+        }
+
         private static GUIContent GetLabel(TaoTiePropertyEntry entry)
         {
             string text = entry.LabelOverride;
@@ -487,8 +499,23 @@ namespace TaoTie.Inspector.Editor
                 text = "*" + ObjectNames.NicifyVariableName(entry.PropertyName);
 
             if (string.IsNullOrEmpty(text)) return null;
-            return new GUIContent(text, tooltip);
+
+            string cacheKey = text + "|" + (tooltip ?? "");
+            if (!s_LabelCache.TryGetValue(cacheKey, out var content))
+            {
+                content = new GUIContent(text, tooltip);
+                s_LabelCache[cacheKey] = content;
+            }
+            return content;
         }
+
+        // Shared DrawBase instance for reflection field drawing — avoids per-call allocation
+        private static readonly DrawBase s_SharedDrawBase = new DrawBase();
+        // Cached MethodInfo for DrawBase.DrawFieldInspector — avoids per-frame reflection
+        private static readonly MethodInfo s_DrawFieldInspectorMethod = typeof(DrawBase).GetMethod(
+            "DrawFieldInspector", BindingFlags.Instance | BindingFlags.NonPublic);
+        // Reusable args array for Invoke — avoids per-call allocation
+        private static readonly object[] s_DrawFieldArgs = new object[3];
 
         /// <summary>
         /// Draw a reflection-based field (Dictionary, unserialized Array/List) using DrawBase.
@@ -526,14 +553,13 @@ namespace TaoTie.Inspector.Editor
             if (entry.DisableInEditorMode != null && !EditorApplication.isPlaying) enabled = false;
             GUI.enabled = wasEnabled && enabled;
 
-            // Draw via DrawBase reflection — foldoutState is now static so persists across frames
-            var drawBase = new DrawBase();
-            DrawBase.SetFoldoutXOffset(14f); // Mono/ScriptObject context: use standard offset
-            var drawMethod = typeof(DrawBase).GetMethod("DrawFieldInspector",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            if (drawMethod != null)
+            DrawBase.SetFoldoutXOffset(14f);
+            if (s_DrawFieldInspectorMethod != null)
             {
-                drawMethod.Invoke(drawBase, new object[] { field, obj, true });
+                s_DrawFieldArgs[0] = field;
+                s_DrawFieldArgs[1] = obj;
+                s_DrawFieldArgs[2] = true;
+                s_DrawFieldInspectorMethod.Invoke(s_SharedDrawBase, s_DrawFieldArgs);
             }
 
             GUI.enabled = wasEnabled;
@@ -632,7 +658,7 @@ namespace TaoTie.Inspector.Editor
             }
 
             // Background box
-            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            var boxStyle = GetBoxStyle();
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Foldout title bar
@@ -787,8 +813,24 @@ namespace TaoTie.Inspector.Editor
         /// Each element is drawn as a single-line PropertyField with index label and delete button.
         /// </summary>
         private static List<TaoTiePropertyEntry> s_allEntries;
+        private static Dictionary<string, TaoTiePropertyEntry> s_entriesByPath;
+        private static List<TaoTiePropertyEntry> s_lastEntriesForDict;
 
-        public static void SetAllEntries(List<TaoTiePropertyEntry> entries) => s_allEntries = entries;
+        public static void SetAllEntries(List<TaoTiePropertyEntry> entries)
+        {
+            s_allEntries = entries;
+            // Only rebuild the dictionary when the entry list reference changes
+            if (s_lastEntriesForDict != entries)
+            {
+                s_entriesByPath = new Dictionary<string, TaoTiePropertyEntry>(entries.Count);
+                foreach (var e in entries)
+                {
+                    if (e.PropertyPath != null)
+                        s_entriesByPath[e.PropertyPath] = e;
+                }
+                s_lastEntriesForDict = entries;
+            }
+        }
 
         /// <summary>
         /// Find a TaoTiePropertyEntry for a child SerializedProperty by matching propertyPath.
@@ -909,14 +951,9 @@ namespace TaoTie.Inspector.Editor
 
         private static TaoTiePropertyEntry FindChildEntry(TaoTiePropertyEntry parentEntry, SerializedProperty childProp)
         {
-            if (s_allEntries == null) return null;
-            string childPath = childProp.propertyPath;
-            foreach (var e in s_allEntries)
-            {
-                if (e.PropertyPath == childPath)
-                    return e;
-            }
-            return null;
+            if (s_entriesByPath == null) return null;
+            s_entriesByPath.TryGetValue(childProp.propertyPath, out var entry);
+            return entry;
         }
 
         private static bool DrawArrayBox(TaoTiePropertyEntry entry, object target = null)
@@ -944,7 +981,7 @@ namespace TaoTie.Inspector.Editor
             float availableWidth = EditorGUIUtility.currentViewWidth - 40f;
             float fieldColW = Mathf.Max(50f, availableWidth - indexColW - deleteColW);
 
-            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            var boxStyle = GetBoxStyle();
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Foldout title bar with + / - controls
@@ -1109,7 +1146,7 @@ namespace TaoTie.Inspector.Editor
             var label = GetLabel(entry);
             string title = label?.text ?? prop.displayName;
 
-            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            var boxStyle = GetBoxStyle();
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Foldout title bar
@@ -1243,23 +1280,13 @@ namespace TaoTie.Inspector.Editor
             if (!entry.PropertyPath.Contains('.'))
                 return rootTarget;
 
-            string[] parts = entry.PropertyPath.Split('.');
+            // Use cached path parts from the entry if available
+            string[] parts = entry.cachedPathParts ?? (entry.cachedPathParts = entry.PropertyPath.Split('.'));
             object current = rootTarget;
-            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
             for (int i = 0; i < parts.Length - 1 && current != null; i++)
             {
-                var type = current.GetType();
-                var field = type.GetField(parts[i], flags);
-                if (field == null)
-                {
-                    Type baseType = type.BaseType;
-                    while (field == null && baseType != null && baseType != typeof(object))
-                    {
-                        field = baseType.GetField(parts[i], flags);
-                        baseType = baseType.BaseType;
-                    }
-                }
+                var field = TaoTiePropertyEntry.GetCachedFieldPublic(current.GetType(), parts[i]);
                 if (field == null) return rootTarget;
                 current = field.GetValue(current);
             }
@@ -1273,72 +1300,119 @@ namespace TaoTie.Inspector.Editor
         /// 2. IEnumerable<ValueDropdownItem> — ValueDropdownItem.Value should be a Type
         /// 3. List<int> or other IEnumerable — values are used as-is (type = value.GetType())
         /// </summary>
+        // Cache for ResolveTypeFilter — key: (propertyPath, filterGetter), value: List<Type>
+        // Type lists are stable across frames; cleared on managed reference changes
+        private static readonly Dictionary<(string, string), List<Type>> s_TypeFilterCache = new();
+
         private static List<Type> ResolveTypeFilter(string filterGetter, object target, TaoTiePropertyEntry entry)
         {
+            // Check cache first — type filter results are stable across frames
+            var cacheKey = (entry.PropertyPath, filterGetter);
+            if (s_TypeFilterCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
             var result = new List<Type>();
             var condTarget = ResolveConditionTarget(target, entry);
             var searchType = entry.DeclaringType ?? condTarget?.GetType() ?? target.GetType();
             const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
 
-            var method = searchType.GetMethod(filterGetter, flags);
-            if (method == null)
+            // Handle @-expressions for TypeFilter (e.g. "@TestStaticHelper.GetStaticSkillTypes()")
+            if (filterGetter.StartsWith("@"))
             {
-                // Try on root target type
-                method = target.GetType().GetMethod(filterGetter, flags);
-            }
-            if (method != null)
-            {
-                var invokeTarget = method.IsStatic ? null : (condTarget ?? target);
-                var retVal = method.Invoke(invokeTarget, null);
-                if (retVal is IEnumerable enumerable)
+                var expr = filterGetter.Substring(1);
+                // Parse "ClassName.MethodName()" format
+                int dotIdx = expr.IndexOf('.');
+                if (dotIdx > 0)
                 {
-                    foreach (var item in enumerable)
+                    string className = expr.Substring(0, dotIdx);
+                    string methodPart = expr.Substring(dotIdx + 1);
+                    // Remove trailing "()"
+                    if (methodPart.EndsWith("()"))
+                        methodPart = methodPart.Substring(0, methodPart.Length - 2);
+
+                    // Find the type by name across all assemblies
+                    Type staticType = null;
+                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
                     {
-                        // Case 1: item is already a Type
-                        if (item is Type t)
+                        staticType = asm.GetType(className);
+                        if (staticType != null) break;
+                    }
+
+                    if (staticType != null)
+                    {
+                        var method = staticType.GetMethod(methodPart, flags);
+                        if (method != null)
                         {
-                            result.Add(t);
+                            var retVal = method.Invoke(method.IsStatic ? null : target, null);
+                            if (retVal is IEnumerable enumerable)
+                            {
+                                foreach (var item in enumerable)
+                                {
+                                    if (item is Type t) result.Add(t);
+                                    else if (item is ValueDropdownItem vdi && vdi.Value is Type vt) result.Add(vt);
+                                    else if (item != null) result.Add(item.GetType());
+                                }
+                            }
                         }
-                        // Case 2: item is a ValueDropdownItem — extract Value
-                        else if (item is ValueDropdownItem vdi)
+                    }
+                }
+            }
+            else
+            {
+                var method = searchType.GetMethod(filterGetter, flags);
+                if (method == null)
+                    method = target.GetType().GetMethod(filterGetter, flags);
+                if (method != null)
+                {
+                    var invokeTarget = method.IsStatic ? null : (condTarget ?? target);
+                    var retVal = method.Invoke(invokeTarget, null);
+                    if (retVal is IEnumerable enumerable)
+                    {
+                        foreach (var item in enumerable)
                         {
-                            if (vdi.Value is Type vt)
-                                result.Add(vt);
-                            else if (vdi.Value != null)
-                                result.Add(vdi.Value.GetType());
+                            if (item is Type t) { result.Add(t); }
+                            else if (item is ValueDropdownItem vdi)
+                            {
+                                if (vdi.Value is Type vt) result.Add(vt);
+                                else if (vdi.Value != null) result.Add(vdi.Value.GetType());
+                            }
+                            else if (item is IValueDropdownItem ivdi)
+                            {
+                                var val = ivdi.GetValue();
+                                if (val is Type vt2) result.Add(vt2);
+                                else if (val != null) result.Add(val.GetType());
+                            }
+                            else if (item != null) result.Add(item.GetType());
                         }
-                        // Case 3: item is IValueDropdownItem — extract GetValue
-                        else if (item is IValueDropdownItem ivdi)
+                    }
+                }
+
+                // Fallback: if no method found, return all non-abstract subclasses of the FIELD type (not DeclaringType)
+                if (result.Count == 0 && entry.DeclaringType != null)
+                {
+                    // Use the field's actual type, not the declaring type
+                    var fieldType = entry.ReflectionField?.FieldType;
+                    if (fieldType == null && entry.Property != null)
+                    {
+                        // Try to resolve from SerializedProperty
+                        var fieldInfo = ResolveFieldFromPath(target, entry.PropertyPath);
+                        fieldType = fieldInfo?.FieldType;
+                    }
+                    if (fieldType != null)
+                    {
+                        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
                         {
-                            var val = ivdi.GetValue();
-                            if (val is Type vt2)
-                                result.Add(vt2);
-                            else if (val != null)
-                                result.Add(val.GetType());
-                        }
-                        // Case 4: item is a plain value (e.g. int from List<int>)
-                        else if (item != null)
-                        {
-                            result.Add(item.GetType());
+                            foreach (var t in asm.GetTypes())
+                            {
+                                if (t.IsClass && !t.IsAbstract && fieldType.IsAssignableFrom(t))
+                                    result.Add(t);
+                            }
                         }
                     }
                 }
             }
 
-            // Fallback: if no method found, return all non-abstract subclasses
-            if (result.Count == 0 && entry.DeclaringType != null)
-            {
-                var fieldType = entry.DeclaringType;
-                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    foreach (var t in asm.GetTypes())
-                    {
-                        if (t.IsClass && !t.IsAbstract && fieldType.IsAssignableFrom(t))
-                            result.Add(t);
-                    }
-                }
-            }
-
+            s_TypeFilterCache[cacheKey] = result;
             return result;
         }
     }

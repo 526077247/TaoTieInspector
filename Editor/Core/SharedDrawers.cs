@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -11,12 +12,18 @@ namespace TaoTie.Inspector.Editor
     /// </summary>
     public static class LabelResolver
     {
+        private static readonly Dictionary<Type, string> s_TypeLabelCache = new();
+
         /// <summary>Get type display name: LabelText if present, otherwise type Name.</summary>
         public static string GetTypeLabel(Type type)
         {
             if (type == null) return "null";
+            if (s_TypeLabelCache.TryGetValue(type, out var cached))
+                return cached;
             var attr = type.GetCustomAttributes(typeof(LabelTextAttribute), false);
-            return attr.Length > 0 ? ((LabelTextAttribute)attr[0]).Text : type.Name;
+            string result = attr.Length > 0 ? ((LabelTextAttribute)attr[0]).Text : type.Name;
+            s_TypeLabelCache[type] = result;
+            return result;
         }
 
         /// <summary>Get member display name: LabelText if present, otherwise NicifyVariableName.</summary>
@@ -42,17 +49,20 @@ namespace TaoTie.Inspector.Editor
     /// <summary>Shared Title attribute rendering.</summary>
     public static class TitleDrawer
     {
+        private static GUIStyle s_TitleStyle;
+
         public static void Draw(TitleAttribute title)
         {
+            if (s_TitleStyle == null)
+                s_TitleStyle = new GUIStyle(EditorStyles.boldLabel);
             if (title.Indented) EditorGUI.indentLevel++;
-            var style = new GUIStyle(EditorStyles.boldLabel);
-            style.alignment = title.TitleAlignment switch
+            s_TitleStyle.alignment = title.TitleAlignment switch
             {
                 TitleAlignmentType.Center => TextAnchor.MiddleCenter,
                 TitleAlignmentType.Right => TextAnchor.UpperRight,
                 _ => TextAnchor.UpperLeft
             };
-            EditorGUILayout.LabelField(title.Title, style);
+            EditorGUILayout.LabelField(title.Title, s_TitleStyle);
             if (title.HorizontalLine)
             {
                 var rect = GUILayoutUtility.GetLastRect();

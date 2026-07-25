@@ -10,6 +10,25 @@ namespace TaoTie.Inspector.Editor
 {
     public static class ValueDropdownDrawer
     {
+        // Cache dropdown items per (target hash, memberName) — cleared when dropdown popup is opened
+        private static readonly Dictionary<(int, string), List<ValueDropdownItem>> s_ItemCache = new();
+        private static GUIStyle s_BoxStyle;
+
+        private static GUIStyle GetBoxStyle()
+        {
+            if (s_BoxStyle == null)
+                s_BoxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            return s_BoxStyle;
+        }
+
+        /// <summary>
+        /// Clear the dropdown items cache. Call when a dropdown popup is opened
+        /// to force re-evaluation on the next frame.
+        /// </summary>
+        public static void ClearCache()
+        {
+            s_ItemCache.Clear();
+        }
         public static void Draw(SerializedProperty property, ValueDropdownAttribute attribute,
             object target, GUIContent label)
         {
@@ -128,7 +147,7 @@ namespace TaoTie.Inspector.Editor
             float availableWidth = EditorGUIUtility.currentViewWidth - 40f;
             float dropdownColW = Mathf.Max(50f, availableWidth - indexColW - deleteColW);
 
-            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            var boxStyle = GetBoxStyle();
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Foldout title bar with + / - controls
@@ -275,6 +294,12 @@ namespace TaoTie.Inspector.Editor
         {
             if (target == null || string.IsNullOrEmpty(memberName)) return null;
 
+            // Check cache first — target identity + member name
+            int targetHash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(target);
+            var cacheKey = (targetHash, memberName);
+            if (s_ItemCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
             Type type = target.GetType();
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
@@ -342,6 +367,7 @@ namespace TaoTie.Inspector.Editor
                 }
             }
 
+            s_ItemCache[cacheKey] = items;
             return items;
         }
 

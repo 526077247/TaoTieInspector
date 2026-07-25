@@ -843,6 +843,8 @@ namespace TaoTie.Inspector.Editor
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Title bar — rect-based gap-fill
+            string tlFoldKey = "TaoTie_Fold_TL_" + field.Name + "_" + obj.GetHashCode();
+            bool tlFoldout = SessionState.GetBool(tlFoldKey, false);
             int tlOldIndent = EditorGUI.indentLevel;
             EditorGUI.indentLevel = 0;
             Rect tlTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
@@ -855,7 +857,9 @@ namespace TaoTie.Inspector.Editor
             float tlCountW = EditorStyles.miniLabel.CalcSize(tlCountContent).x + 8f;
             Rect tlCountRect = new Rect(tlPlusX - tlCountW - 4f, tlTitleRect.y, tlCountW, tlTitleRect.height);
             Rect tlFoldRect = new Rect(tlTbX, tlTitleRect.y, tlCountRect.x - tlTbX - 4f, tlTitleRect.height);
-            // No foldout for TableList — always expanded when visible
+            // Foldout with title text
+            tlFoldout = EditorGUI.Foldout(tlFoldRect, tlFoldout, title, true);
+            SessionState.SetBool(tlFoldKey, tlFoldout);
             EditorGUI.LabelField(tlCountRect, tlCountContent, EditorStyles.miniLabel);
             if (GUI.Button(new Rect(tlPlusX, tlTitleRect.y, 24f, tlTitleRect.height), "+", EditorStyles.toolbarButton))
             {
@@ -893,11 +897,10 @@ namespace TaoTie.Inspector.Editor
                 }
                 tableChanged = true;
             }
-            GUILayout.Space(tlTitleRect.height);
             EditorGUI.indentLevel = tlOldIndent;
 
             // Column headers with drag handles
-            if (colCount > 0)
+            if (tlFoldout && colCount > 0)
             {
                 var headerRect = EditorGUILayout.GetControlRect(false, 20f);
                 EditorGUI.DrawRect(headerRect, new Color(0.3f, 0.3f, 0.3f, 0.4f));
@@ -926,11 +929,10 @@ namespace TaoTie.Inspector.Editor
                 // Header bottom border
                 EditorGUI.DrawRect(new Rect(headerRect.x, headerRect.yMax - 1, headerRect.width, 1),
                     new Color(0.5f, 0.5f, 0.5f, 0.6f));
-                GUILayout.Space(headerRect.height);
             }
 
             // Data rows
-            if (list != null && count > 0)
+            if (tlFoldout && list != null && count > 0)
             {
                 string tlShowAllKey = "TaoTie_ShowAll_TL_" + field.Name + "_" + obj.GetHashCode();
                 bool tlShowAll = SessionState.GetBool(tlShowAllKey, false);
@@ -938,6 +940,8 @@ namespace TaoTie.Inspector.Editor
 
                 for (int i = 0; i < tlVisibleCount; i++)
                 {
+                    // Guard against mid-frame collection mutation (e.g. delete button)
+                    if (i >= list.Count) break;
                     var item = list[i];
                     var rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight + 2f);
                     // Alternating row background
@@ -1014,7 +1018,10 @@ namespace TaoTie.Inspector.Editor
                             field.SetValue(obj, value);
                         }
                         tableChanged = true;
-                        break;
+                        // Abort the current GUI pass — the collection has changed mid-layout,
+                        // continuing would cause GUILayout mismatch / index out of range.
+                        GUI.changed = true;
+                        GUIUtility.ExitGUI();
                     }
 
                     // Row bottom grid line
@@ -1034,6 +1041,13 @@ namespace TaoTie.Inspector.Editor
 
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(2);
+
+            if (tableChanged &&
+                field.GetCustomAttribute(typeof(OnCollectionChangedAttribute)) is OnCollectionChangedAttribute
+                    collectionChangedAttribute)
+            {
+                ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, collectionChangedAttribute.After);
+            }
             return;
         }
 
@@ -1142,6 +1156,8 @@ namespace TaoTie.Inspector.Editor
 
                 for (int i = 0; i < visibleCount; i++)
                 {
+                    // Guard against mid-frame collection mutation
+                    if (i >= list.Count) break;
                     var item = list[i];
                     bool isValueType = itemType.IsValueType || itemType == stringType;
                     bool subFold = false;
@@ -1909,7 +1925,10 @@ namespace TaoTie.Inspector.Editor
             float vdCountW = EditorStyles.miniLabel.CalcSize(vdCountContent).x + 8f;
             Rect vdCountRect = new Rect(vdPlusX - vdCountW - 4f, vdTitleRect.y, vdCountW, vdTitleRect.height);
             Rect vdFoldRect = new Rect(vdTbX, vdTitleRect.y, vdCountRect.x - vdTbX - 4f, vdTitleRect.height);
-            // No separate foldout — always show when visible
+            string vdFoldKey = "TaoTie_Fold_VD_" + field.Name + "_" + obj.GetHashCode();
+            bool vdFoldout = SessionState.GetBool(vdFoldKey, false);
+            vdFoldout = EditorGUI.Foldout(vdFoldRect, vdFoldout, title, true);
+            SessionState.SetBool(vdFoldKey, vdFoldout);
             EditorGUI.LabelField(vdCountRect, vdCountContent, EditorStyles.miniLabel);
             if (GUI.Button(new Rect(vdPlusX, vdTitleRect.y, 24f, vdTitleRect.height), "+", EditorStyles.toolbarButton))
             {
@@ -1920,16 +1939,19 @@ namespace TaoTie.Inspector.Editor
             {
                 if (len > 0) { list.RemoveAt(len - 1); changed = true; }
             }
-            GUILayout.Space(vdTitleRect.height);
             EditorGUI.indentLevel = vdOldIndent;
 
             // Data rows
+            if (vdFoldout)
+            {
             string vdShowAllKey = "TaoTie_ShowAll_VD_" + field.Name + "_" + obj.GetHashCode();
             bool vdShowAll = SessionState.GetBool(vdShowAllKey, false);
             int vdVisibleCount = vdShowAll ? list.Count : Mathf.Min(list.Count, k_MaxVisibleRows);
 
             for (int i = 0; i < vdVisibleCount; i++)
             {
+                // Guard against mid-frame collection mutation
+                if (i >= list.Count) break;
                 var value = list[i];
                 var capturedIdx = i;
                 var rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight + 2f);
@@ -2051,6 +2073,7 @@ namespace TaoTie.Inspector.Editor
                     SessionState.SetBool(vdShowAllKey, !vdShowAll);
                 }
             }
+            } // end if (vdFoldout)
 
             if (removeIndex >= 0)
             {

@@ -26,7 +26,7 @@ namespace TaoTie.Inspector.Editor
     /// </summary>
     public abstract class TaoTieEditorWindow : UnityEditor.EditorWindow
     {
-        private UnityEditor.Editor cachedEditor;
+        private DrawBase drawBase;
         private Vector2 scrollPosition;
 
         /// <summary>
@@ -38,36 +38,27 @@ namespace TaoTie.Inspector.Editor
         {
             titleContent = new GUIContent(GetWindowTitle());
             minSize = new Vector2(300, 400);
-            CreateCachedEditor();
+            drawBase = new DrawBase();
         }
 
         protected virtual void OnDisable()
         {
-            if (cachedEditor != null)
-                DestroyImmediate(cachedEditor);
         }
 
         protected virtual void OnDestroy()
         {
         }
 
-        private void CreateCachedEditor()
-        {
-            if (cachedEditor != null)
-                DestroyImmediate(cachedEditor);
-            UnityEditor.Editor.CreateCachedEditor(this, typeof(TaoTieEditor), ref cachedEditor);
-        }
-
         protected virtual void OnGUI()
         {
-            // Set adaptive label width based on window width
-            float ratioW = position.width * 0.4f;
-            float oldLabelW = EditorGUIUtility.labelWidth;
-            EditorGUIUtility.labelWidth = Mathf.Max(80f, ratioW);
+            // EditorWindow receives MouseMove events on every pixel of mouse movement,
+            // each triggering a full GUILayout pass through the entire inspector.
+            // Inspector does NOT receive MouseMove — skip it to match Inspector performance.
+            // Tooltips are handled during Repaint, not MouseMove.
+            if (Event.current.type == EventType.MouseMove)
+                return;
 
             DrawInspector();
-
-            EditorGUIUtility.labelWidth = oldLabelW;
         }
 
         /// <summary>
@@ -78,23 +69,12 @@ namespace TaoTie.Inspector.Editor
         {
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
-            if (cachedEditor != null)
-            {
-                EditorGUILayout.Space(2);
-                cachedEditor.OnInspectorGUI();
-            }
-            else
-            {
-                GUILayout.FlexibleSpace();
-                var centeredStyle = new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.MiddleCenter,
-                    fontStyle = FontStyle.Italic
-                };
-                EditorGUILayout.LabelField("Inspector not initialized", centeredStyle,
-                    GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
-                GUILayout.FlexibleSpace();
-            }
+            EditorGUILayout.Space(2);
+
+            // Use DrawBase (reflection path) — same as Graph, gives consistent
+            // foldout alignment without the SerializedProperty overhead.
+            DrawBase.SetAvailableWidth(position.width - 40f);
+            drawBase.DrawObjectInspector(this, true);
 
             EditorGUILayout.EndScrollView();
         }
@@ -102,7 +82,11 @@ namespace TaoTie.Inspector.Editor
         /// <summary>
         /// Force the inspector to rebuild (e.g. after adding new serializable fields).
         /// </summary>
-        protected void RebuildInspector() => CreateCachedEditor();
+        protected void RebuildInspector()
+        {
+            drawBase = new DrawBase();
+            Repaint();
+        }
 
         /// <summary>
         /// Repaint the window.

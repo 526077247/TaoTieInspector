@@ -72,6 +72,30 @@ namespace TaoTie.Inspector.Editor
         public bool Visible = true;
         public bool Enabled = true;
 
+        // Cached path parts for ResolveConditionTarget — avoids per-frame string.Split
+        internal string[] cachedPathParts;
+
+        // Static cache for (Type, fieldName) → FieldInfo, shared across all entries
+        private static readonly Dictionary<(Type, string), FieldInfo> s_FieldCache = new();
+
+        internal static FieldInfo GetCachedFieldPublic(Type type, string name)
+        {
+            var key = (type, name);
+            if (s_FieldCache.TryGetValue(key, out var field))
+                return field;
+
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            field = type.GetField(name, flags);
+            Type baseType = type.BaseType;
+            while (field == null && baseType != null && baseType != typeof(object))
+            {
+                field = baseType.GetField(name, flags);
+                baseType = baseType.BaseType;
+            }
+            s_FieldCache[key] = field; // may store null — avoids re-lookup for missing fields
+            return field;
+        }
+
         public bool IsVisible(object rootTarget)
         {
             if (DrawIgnore != null && DrawIgnore.Ignore == Ignore.All) return false;
@@ -105,7 +129,7 @@ namespace TaoTie.Inspector.Editor
             if (DisableIf != null)
             {
                 foreach (var attr in DisableIf)
-                    if (TaoTieConditionResolver.EvaluateDisableIf(attr, condTarget))
+                    if (!TaoTieConditionResolver.EvaluateDisableIf(attr, condTarget))
                         return false;
             }
             return true;
@@ -114,6 +138,7 @@ namespace TaoTie.Inspector.Editor
         /// <summary>
         /// For nested properties (e.g. "obj.field"), traverse the root target
         /// to find the actual object that holds the condition fields.
+        /// Uses cached path parts and field lookups to avoid per-frame allocations.
         /// </summary>
         private object ResolveConditionTarget(object rootTarget)
         {
@@ -122,24 +147,14 @@ namespace TaoTie.Inspector.Editor
             if (!PropertyPath.Contains('.'))
                 return rootTarget;
 
-            string[] parts = PropertyPath.Split('.');
-            object current = rootTarget;
-            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            if (cachedPathParts == null)
+                cachedPathParts = PropertyPath.Split('.');
 
-            // All parts except the last (which is the field itself)
-            for (int i = 0; i < parts.Length - 1 && current != null; i++)
+            object current = rootTarget;
+
+            for (int i = 0; i < cachedPathParts.Length - 1 && current != null; i++)
             {
-                var type = current.GetType();
-                var field = type.GetField(parts[i], flags);
-                if (field == null)
-                {
-                    Type baseType = type.BaseType;
-                    while (field == null && baseType != null && baseType != typeof(object))
-                    {
-                        field = baseType.GetField(parts[i], flags);
-                        baseType = baseType.BaseType;
-                    }
-                }
+                var field = GetCachedFieldPublic(current.GetType(), cachedPathParts[i]);
                 if (field == null) return rootTarget;
                 current = field.GetValue(current);
             }

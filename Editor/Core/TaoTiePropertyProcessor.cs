@@ -14,6 +14,10 @@ namespace TaoTie.Inspector.Editor
         private readonly Dictionary<Type, List<MethodInfo>> buttonMethodCache = new();
         private readonly Dictionary<Type, FieldInfo[]> fieldCache = new();
 
+        // Cached hidden paths — rebuilt only when entry list reference changes
+        private List<TaoTiePropertyEntry> lastRefreshedEntries;
+        private string[] cachedHiddenPaths;
+
         public List<TaoTiePropertyEntry> BuildEntries(SerializedObject so)
         {
             Type targetType = so.targetObject.GetType();
@@ -72,39 +76,45 @@ namespace TaoTie.Inspector.Editor
 
         public void RefreshDynamicState(List<TaoTiePropertyEntry> entries, object target)
         {
-            // Collect paths whose children should be hidden:
-            // 1. Multi-component fields (Vector2/3/4/Color/etc.) — drawn as single PropertyField
-            // 2. Array/List fields without TableList — PropertyField(includeChildren=true) draws children
-            var hiddenPaths = new HashSet<string>();
-            foreach (var entry in entries)
+            // Cache hidden paths — rebuild only when the entry list reference changes
+            // (entry list is cached by type in BuildEntries, so this is stable across frames)
+            if (cachedHiddenPaths == null || lastRefreshedEntries != entries)
             {
-                try
+                var hiddenSet = new HashSet<string>();
+                foreach (var entry in entries)
                 {
-                    var pt = entry.Property?.propertyType ?? SerializedPropertyType.Generic;
-                    bool isMultiComponent = (pt == SerializedPropertyType.Vector2 || pt == SerializedPropertyType.Vector3
-                         || pt == SerializedPropertyType.Vector4 || pt == SerializedPropertyType.Vector2Int
-                         || pt == SerializedPropertyType.Vector3Int || pt == SerializedPropertyType.Rect
-                         || pt == SerializedPropertyType.Bounds || pt == SerializedPropertyType.Quaternion
-                         || pt == SerializedPropertyType.Color || pt == SerializedPropertyType.Gradient);
-                    bool isArray = entry.Property != null && entry.Property.isArray && entry.TableList == null;
-
-                    if ((isMultiComponent || isArray) && entry.PropertyPath != null)
+                    try
                     {
-                        hiddenPaths.Add(entry.PropertyPath + ".");
+                        var pt = entry.Property?.propertyType ?? SerializedPropertyType.Generic;
+                        bool isMultiComponent = (pt == SerializedPropertyType.Vector2 || pt == SerializedPropertyType.Vector3
+                             || pt == SerializedPropertyType.Vector4 || pt == SerializedPropertyType.Vector2Int
+                             || pt == SerializedPropertyType.Vector3Int || pt == SerializedPropertyType.Rect
+                             || pt == SerializedPropertyType.Bounds || pt == SerializedPropertyType.Quaternion
+                             || pt == SerializedPropertyType.Color || pt == SerializedPropertyType.Gradient);
+                        bool isArray = entry.Property != null && entry.Property.isArray && entry.TableList == null;
+
+                        if ((isMultiComponent || isArray) && entry.PropertyPath != null)
+                        {
+                            hiddenSet.Add(entry.PropertyPath + ".");
+                        }
                     }
+                    catch { /* property may be disposed during managed reference changes */ }
                 }
-                catch { /* property may be disposed during managed reference changes */ }
+                cachedHiddenPaths = new string[hiddenSet.Count];
+                hiddenSet.CopyTo(cachedHiddenPaths);
+                lastRefreshedEntries = entries;
             }
 
-            foreach (var entry in entries)
+            // Single pass: check visibility + enabled
+            for (int i = 0; i < entries.Count; i++)
             {
-                // Check if this entry is a child of a multi-component field or array
+                var entry = entries[i];
                 bool isHiddenChild = false;
-                if (entry.PropertyPath != null)
+                if (entry.PropertyPath != null && cachedHiddenPaths.Length > 0)
                 {
-                    foreach (var prefix in hiddenPaths)
+                    for (int j = 0; j < cachedHiddenPaths.Length; j++)
                     {
-                        if (entry.PropertyPath.StartsWith(prefix))
+                        if (entry.PropertyPath.StartsWith(cachedHiddenPaths[j]))
                         {
                             isHiddenChild = true;
                             break;
@@ -436,6 +446,8 @@ namespace TaoTie.Inspector.Editor
             hasTaoTieAttrCache.Clear();
             buttonMethodCache.Clear();
             fieldCache.Clear();
+            cachedHiddenPaths = null;
+            lastRefreshedEntries = null;
         }
     }
 }

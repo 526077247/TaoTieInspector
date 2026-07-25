@@ -33,13 +33,16 @@ namespace TaoTie.Inspector.Editor
         }
 
         private readonly string expression;
-        private readonly List<Token> tokens;
+        private readonly Token[] tokens;
         private int pos;
 
-        private TaoTieExpressionEvaluator(string expression)
+        // Cache tokenized expressions so repeated Evaluate calls don't re-tokenize
+        private static readonly Dictionary<string, Token[]> s_TokenCache = new();
+
+        private TaoTieExpressionEvaluator(string expression, Token[] tokens)
         {
             this.expression = expression;
-            this.tokens = Tokenize(expression);
+            this.tokens = tokens;
             this.pos = 0;
         }
 
@@ -47,11 +50,17 @@ namespace TaoTie.Inspector.Editor
         {
             if (string.IsNullOrEmpty(expression)) return true;
 
-            var expr = expression;
+            string expr = expression;
             if (expr[0] == '@')
                 expr = expr.Substring(1);
 
-            var evaluator = new TaoTieExpressionEvaluator(expr);
+            if (!s_TokenCache.TryGetValue(expr, out var tokens))
+            {
+                tokens = Tokenize(expr);
+                s_TokenCache[expr] = tokens;
+            }
+
+            var evaluator = new TaoTieExpressionEvaluator(expr, tokens);
             return evaluator.Evaluate(target);
         }
 
@@ -62,7 +71,7 @@ namespace TaoTie.Inspector.Editor
 
         #region Tokenizer
 
-        private static List<Token> Tokenize(string expr)
+        private static Token[] Tokenize(string expr)
         {
             var result = new List<Token>();
             int i = 0;
@@ -151,7 +160,7 @@ namespace TaoTie.Inspector.Editor
             }
 
             result.Add(new Token { Type = TokenType.EOF, Text = "" });
-            return result;
+            return result.ToArray();
         }
 
         #endregion
@@ -308,7 +317,7 @@ namespace TaoTie.Inspector.Editor
 
         private void Advance()
         {
-            if (pos < tokens.Count - 1)
+            if (pos < tokens.Length - 1)
                 pos++;
         }
 
