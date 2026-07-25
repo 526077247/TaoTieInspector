@@ -57,9 +57,13 @@ namespace TaoTie.Inspector.Editor
             return null;
         }
 
-        protected HashSet<FieldInfo> foldoutState = new();
+        protected static HashSet<FieldInfo> foldoutState = new();
         protected HashSet<GroupItem> foldoutState2 = new();
         protected HashSet<string> drawnTabGroups = new();
+
+        // Flag to control foldout x offset: Graph uses 4f, Mono/ScriptObject uses 14f
+        protected static float s_FoldoutXOffset = 14f;
+        public static void SetFoldoutXOffset(float offset) => s_FoldoutXOffset = offset;
 
         private static Dictionary<FieldInfo, HashSet<int>> listFoldoutState = new();
         private static Dictionary<FieldInfo, object> dicInputKey = new();
@@ -81,6 +85,9 @@ namespace TaoTie.Inspector.Editor
             if (obj == null) return;
             if (obj.GetType().IsDefined(typeof(DrawWithUnityAttribute), true))
                 return;
+
+            // Graph context: use smaller foldout x offset
+            s_FoldoutXOffset = 4f;
 
             // Set adaptive label width: Title:Content = 4:6 with minimum
             float oldLabelW = EditorGUIUtility.labelWidth;
@@ -477,6 +484,7 @@ namespace TaoTie.Inspector.Editor
                 var typeLabelAttr = valueType.GetCustomAttributes(typeof(LabelTextAttribute), false);
                 string typeDisplayName = LabelResolver.GetTypeLabel(valueType);
 
+                // Use instance field for foldout state — DrawBase is reused across frames via DrawReflectionProperty
                 bool foldout = foldoutState.Contains(field);
                 var foldoutLabel = GetShowName(field, value);
                 float labelW = EditorStyles.foldout.CalcSize(foldoutLabel).x + 18f;
@@ -834,7 +842,7 @@ namespace TaoTie.Inspector.Editor
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
             EditorGUILayout.BeginVertical(boxStyle);
 
-            // Title bar — rect-based gap-fill (same as DrawIListBoxGrid)
+            // Title bar — rect-based gap-fill
             int tlOldIndent = EditorGUI.indentLevel;
             EditorGUI.indentLevel = 0;
             Rect tlTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
@@ -1363,7 +1371,7 @@ namespace TaoTie.Inspector.Editor
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
             EditorGUILayout.BeginVertical(boxStyle);
 
-            // Foldout title bar — same indent pattern as DrawArrayBox/List
+            // Foldout title bar
             string dicFoldKey = "TaoTie_Fold_Dict_" + field.Name + "_" + obj.GetHashCode();
             bool dicFoldout = SessionState.GetBool(dicFoldKey, false);
             int dicOldIndent = EditorGUI.indentLevel;
@@ -1371,7 +1379,7 @@ namespace TaoTie.Inspector.Editor
             Rect dicTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(dicTitleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
             string dicTitle = (GetShowName(field)?.text ?? ObjectNames.NicifyVariableName(field.Name)) + $" ({dictionary.Count})";
-            dicFoldout = EditorGUI.Foldout(new Rect(dicTitleRect.x + 14f, dicTitleRect.y, dicTitleRect.width - 18f, dicTitleRect.height),
+            dicFoldout = EditorGUI.Foldout(new Rect(dicTitleRect.x + s_FoldoutXOffset, dicTitleRect.y, dicTitleRect.width - s_FoldoutXOffset - 4f, dicTitleRect.height),
                 dicFoldout, new GUIContent(dicTitle), true);
             SessionState.SetBool(dicFoldKey, dicFoldout);
             EditorGUI.indentLevel = dicOldIndent;
@@ -1888,7 +1896,7 @@ namespace TaoTie.Inspector.Editor
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
             EditorGUILayout.BeginVertical(boxStyle);
 
-            // Title bar — rect-based gap-fill (same as DrawIListBoxGrid)
+            // Title bar — rect-based gap-fill
             int vdOldIndent = EditorGUI.indentLevel;
             EditorGUI.indentLevel = 0;
             Rect vdTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
@@ -2203,12 +2211,14 @@ namespace TaoTie.Inspector.Editor
             {
                 return false;
             }
-            // Skip Unity built-in fields from ScriptableObject / UnityEngine.Object / MonoBehaviour
+            // Skip Unity built-in fields from ScriptableObject / UnityEngine.Object / MonoBehaviour / EditorWindow
             if (member is FieldInfo uf && (uf.DeclaringType == typeof(UnityEngine.Object)
                 || uf.DeclaringType == typeof(UnityEngine.ScriptableObject)
                 || uf.DeclaringType == typeof(UnityEngine.MonoBehaviour)
                 || uf.DeclaringType == typeof(UnityEngine.Behaviour)
-                || uf.DeclaringType == typeof(UnityEngine.Component)))
+                || uf.DeclaringType == typeof(UnityEngine.Component)
+                || uf.DeclaringType == typeof(UnityEditor.EditorWindow)
+                || uf.DeclaringType == typeof(UnityEditor.Editor)))
             {
                 return false;
             }

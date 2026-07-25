@@ -1,3 +1,5 @@
+using System;
+using System.Reflection;
 using UnityEngine;
 
 namespace TaoTie.Inspector
@@ -19,6 +21,41 @@ namespace TaoTie.Inspector
 
         /// <summary>Internal — called by TaoTieEditor after ApplyModifiedProperties.</summary>
         internal void NotifyAfterDeserialize() => OnAfterDeserialize();
+
+        protected virtual void OnEnable()
+        {
+            InitializeNullFields();
+        }
+
+        /// <summary>
+        /// Initialize null class fields — Unity ScriptableObject creation bypasses C# constructors.
+        /// </summary>
+        private void InitializeNullFields()
+        {
+            var type = GetType();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            Type currentType = type;
+            while (currentType != null && currentType != typeof(object))
+            {
+                foreach (var field in currentType.GetFields(flags | BindingFlags.DeclaredOnly))
+                {
+                    if (typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType)) continue;
+                    if (field.FieldType.IsValueType) continue;
+                    if (field.FieldType.IsArray) continue;
+                    if (field.FieldType.IsGenericType) continue;
+                    if (field.FieldType.IsAbstract) continue;
+                    if (field.IsDefined(typeof(NonSerializedAttribute), false)) continue;
+
+                    try
+                    {
+                        if (field.GetValue(this) == null)
+                            field.SetValue(this, Activator.CreateInstance(field.FieldType));
+                    }
+                    catch { }
+                }
+                currentType = currentType.BaseType;
+            }
+        }
     }
 
     /// <summary>
@@ -35,6 +72,38 @@ namespace TaoTie.Inspector
 
         /// <summary>Internal — called by TaoTieEditor after ApplyModifiedProperties.</summary>
         internal void NotifyAfterDeserialize() => OnAfterDeserialize();
+
+        protected virtual void OnEnable()
+        {
+            InitializeNullFields();
+        }
+
+        private void InitializeNullFields()
+        {
+            var type = GetType();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            Type currentType = type;
+            while (currentType != null && currentType != typeof(object))
+            {
+                foreach (var field in currentType.GetFields(flags | BindingFlags.DeclaredOnly))
+                {
+                    if (typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType)) continue;
+                    if (field.FieldType.IsValueType) continue;
+                    if (field.FieldType.IsArray) continue;
+                    if (field.FieldType.IsGenericType) continue;
+                    if (field.FieldType.IsAbstract) continue;
+                    if (field.IsDefined(typeof(NonSerializedAttribute), false)) continue;
+
+                    try
+                    {
+                        if (field.GetValue(this) == null)
+                            field.SetValue(this, Activator.CreateInstance(field.FieldType));
+                    }
+                    catch { }
+                }
+                currentType = currentType.BaseType;
+            }
+        }
     }
 
     /// <summary>
@@ -51,6 +120,38 @@ namespace TaoTie.Inspector
 
         /// <summary>Internal — called by TaoTieEditor after ApplyModifiedProperties.</summary>
         internal void NotifyAfterDeserialize() => OnAfterDeserialize();
+
+        protected virtual void OnEnable()
+        {
+            InitializeNullFields();
+        }
+
+        private void InitializeNullFields()
+        {
+            var type = GetType();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            Type currentType = type;
+            while (currentType != null && currentType != typeof(object))
+            {
+                foreach (var field in currentType.GetFields(flags | BindingFlags.DeclaredOnly))
+                {
+                    if (typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType)) continue;
+                    if (field.FieldType.IsValueType) continue;
+                    if (field.FieldType.IsArray) continue;
+                    if (field.FieldType.IsGenericType) continue;
+                    if (field.FieldType.IsAbstract) continue;
+                    if (field.IsDefined(typeof(NonSerializedAttribute), false)) continue;
+
+                    try
+                    {
+                        if (field.GetValue(this) == null)
+                            field.SetValue(this, Activator.CreateInstance(field.FieldType));
+                    }
+                    catch { }
+                }
+                currentType = currentType.BaseType;
+            }
+        }
     }
 
     /// <summary>

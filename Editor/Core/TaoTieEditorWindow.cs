@@ -32,7 +32,7 @@ namespace TaoTie.Inspector.Editor
         /// <summary>
         /// Optional: override to provide a custom title for the window.
         /// </summary>
-        protected virtual string GetWindowTitle() => "TaoTie Editor Window";
+        protected virtual string GetWindowTitle() => GetType().Name;
 
         protected virtual void OnEnable()
         {

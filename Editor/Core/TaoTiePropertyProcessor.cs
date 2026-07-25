@@ -155,13 +155,13 @@ namespace TaoTie.Inspector.Editor
             {
                 if (CheckFieldHasTaoTieAttr(field)) return true;
 
-                // Recurse into [Serializable] nested class fields
+                // Recurse into nested class fields (with or without [Serializable])
                 if (field.FieldType.IsClass
                     && field.FieldType != typeof(string)
                     && !field.FieldType.IsArray
                     && !typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType)
                     && !field.FieldType.IsGenericType
-                    && field.FieldType.IsDefined(typeof(System.SerializableAttribute), false))
+                    && !field.FieldType.IsAbstract)
                 {
                     if (HasAnyTaoTieAttributesInternal(field.FieldType, visited)) return true;
                 }

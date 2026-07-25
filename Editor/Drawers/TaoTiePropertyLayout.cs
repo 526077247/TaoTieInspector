@@ -526,9 +526,9 @@ namespace TaoTie.Inspector.Editor
             if (entry.DisableInEditorMode != null && !EditorApplication.isPlaying) enabled = false;
             GUI.enabled = wasEnabled && enabled;
 
-            // Draw via DrawBase reflection — DrawBase.DrawFieldDictionaryInspector / DrawIListBoxGrid
-            // already provide their own box+foldout wrapper, so we don't add another here
+            // Draw via DrawBase reflection — foldoutState is now static so persists across frames
             var drawBase = new DrawBase();
+            DrawBase.SetFoldoutXOffset(14f); // Mono/ScriptObject context: use standard offset
             var drawMethod = typeof(DrawBase).GetMethod("DrawFieldInspector",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             if (drawMethod != null)
@@ -828,12 +828,7 @@ namespace TaoTie.Inspector.Editor
             // Foldout rect excludes the button area so clicks on buttons don't toggle foldout
             Rect actualFoldoutRect = new Rect(foldoutRect.x, foldoutRect.y, plusRect.x - foldoutRect.x - 4f, foldoutRect.height);
             bool newFoldout = EditorGUI.Foldout(actualFoldoutRect, foldout, $"{title} ({prop.arraySize})", true);
-            // Only write back if changed — ExitGUI to force re-layout on next frame
-            if (newFoldout != foldout)
-            {
-                prop.isExpanded = newFoldout;
-                GUIUtility.ExitGUI();
-            }
+            prop.isExpanded = newFoldout;
             if (GUI.Button(plusRect, "+"))
             {
                 prop.arraySize++;
@@ -873,12 +868,7 @@ namespace TaoTie.Inspector.Editor
                     }
                     EditorGUILayout.EndHorizontal();
 
-                    // Handle foldout state change with ExitGUI
-                    if (nestNewExpanded != nestElemExpanded)
-                    {
-                        element.isExpanded = nestNewExpanded;
-                        GUIUtility.ExitGUI();
-                    }
+                    element.isExpanded = nestNewExpanded;
 
                     if (element.isExpanded)
                     {
@@ -1045,12 +1035,7 @@ namespace TaoTie.Inspector.Editor
                         }
                         EditorGUILayout.EndHorizontal();
 
-                        // Handle foldout state change with ExitGUI to avoid Layout/Repaint mismatch
-                        if (newElemExpanded != elemExpanded)
-                        {
-                            element.isExpanded = newElemExpanded;
-                            GUIUtility.ExitGUI();
-                        }
+                        element.isExpanded = newElemExpanded;
 
                         if (element.isExpanded)
                         {

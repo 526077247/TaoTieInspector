@@ -198,10 +198,6 @@ namespace TaoTie.Inspector.Editor
             TaoTiePropertyLayout.ApplyPendingManagedReferences(serializedObject);
             serializedObject.ApplyModifiedProperties();
             TaoTiePropertyLayout.FlushPendingCallbacks();
-
-            // Clear entry cache so next frame rebuilds with fresh SerializedProperty references
-            // (array element deletions invalidate cached property references)
-            processor.ClearCache();
         }
 
         /// <summary>
@@ -260,7 +256,9 @@ namespace TaoTie.Inspector.Editor
                         field.DeclaringType == typeof(UnityEngine.ScriptableObject) ||
                         field.DeclaringType == typeof(UnityEngine.MonoBehaviour) ||
                         field.DeclaringType == typeof(UnityEngine.Behaviour) ||
-                        field.DeclaringType == typeof(UnityEngine.Component)) continue;
+                        field.DeclaringType == typeof(UnityEngine.Component) ||
+                        field.DeclaringType == typeof(UnityEditor.EditorWindow) ||
+                        field.DeclaringType == typeof(UnityEditor.Editor)) continue;
                     // Skip event backing fields
                     if (field.DeclaringType?.GetEvent(field.Name, flags) != null) continue;
                     // Skip NonSerialized (but Dictionary is inherently non-serialized, so check attribute explicitly)
@@ -268,7 +266,14 @@ namespace TaoTie.Inspector.Editor
                     // Skip DrawIgnore(All)
                     if (field.GetCustomAttribute<DrawIgnoreAttribute>() is DrawIgnoreAttribute dia && dia.Ignore == Ignore.All) continue;
 
-                    if (!isDictionary && !isArray && !isList) continue;
+                    // Also handle plain class fields (non-serialized, non-collection)
+                    bool isPlainClass = field.FieldType.IsClass
+                        && field.FieldType != typeof(string)
+                        && !typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType)
+                        && !isDictionary && !isArray && !isList
+                        && !field.FieldType.IsAbstract;
+
+                    if (!isDictionary && !isArray && !isList && !isPlainClass) continue;
 
                     // Create a synthetic entry for this unserialized field
                     var entry = new TaoTiePropertyEntry
