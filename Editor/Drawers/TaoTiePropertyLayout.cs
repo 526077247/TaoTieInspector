@@ -843,35 +843,54 @@ namespace TaoTie.Inspector.Editor
                 for (int i = 0; i < abVisibleCount; i++)
                 {
                     var element = prop.GetArrayElementAtIndex(i);
-                    var rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight + 2f);
-                    if (i % 2 == 1)
-                        EditorGUI.DrawRect(rowRect, new Color(0.5f, 0.5f, 0.5f, 0.1f));
+                    bool elementIsSimple = !element.hasVisibleChildren || element.isArray;
 
-                    float x = rowRect.x;
-                    // Index
-                    EditorGUI.LabelField(new Rect(x, rowRect.y, indexColW, rowRect.height), i.ToString());
-                    x += indexColW;
-
-                    // Field
-                    Rect fieldRect = new Rect(x, rowRect.y, fieldColW, rowRect.height);
-                    EditorGUI.BeginChangeCheck();
-                    EditorGUI.PropertyField(fieldRect, element, GUIContent.none, true);
-                    if (EditorGUI.EndChangeCheck())
-                        changed = true;
-                    x += fieldColW;
-
-                    // Delete button
-                    Rect delRect = new Rect(x, rowRect.y, deleteColW, rowRect.height);
-                    if (GUI.Button(delRect, "×"))
+                    if (elementIsSimple)
                     {
-                        prop.DeleteArrayElementAtIndex(i);
-                        changed = true;
-                        break;
-                    }
+                        // Simple value type — draw as single-line row in grid
+                        var rowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight + 2f);
+                        if (i % 2 == 1)
+                            EditorGUI.DrawRect(rowRect, new Color(0.5f, 0.5f, 0.5f, 0.1f));
 
-                    // Row bottom grid line
-                    EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.yMax - 1, rowRect.width, 1),
-                        new Color(0.3f, 0.3f, 0.3f, 0.3f));
+                        float x = rowRect.x;
+                        EditorGUI.LabelField(new Rect(x, rowRect.y, indexColW, rowRect.height), i.ToString());
+                        x += indexColW;
+
+                        Rect fieldRect = new Rect(x, rowRect.y, fieldColW, rowRect.height);
+                        EditorGUI.BeginChangeCheck();
+                        EditorGUI.PropertyField(fieldRect, element, GUIContent.none, true);
+                        if (EditorGUI.EndChangeCheck())
+                            changed = true;
+                        x += fieldColW;
+
+                        Rect delRect = new Rect(x, rowRect.y, deleteColW, rowRect.height);
+                        if (GUI.Button(delRect, "×"))
+                        {
+                            prop.DeleteArrayElementAtIndex(i);
+                            changed = true;
+                            break;
+                        }
+
+                        EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.yMax - 1, rowRect.width, 1),
+                            new Color(0.3f, 0.3f, 0.3f, 0.3f));
+                    }
+                    else
+                    {
+                        // [Serializable] class element — use GUILayout for dynamic height
+                        EditorGUILayout.BeginHorizontal();
+                        EditorGUILayout.LabelField(i.ToString(), GUILayout.Width(indexColW));
+                        EditorGUI.BeginChangeCheck();
+                        EditorGUILayout.PropertyField(element, GUIContent.none, true);
+                        if (EditorGUI.EndChangeCheck())
+                            changed = true;
+                        if (GUILayout.Button("×", GUILayout.Width(deleteColW)))
+                        {
+                            prop.DeleteArrayElementAtIndex(i);
+                            changed = true;
+                        }
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.Space(4);
+                    }
                 }
 
                 // Show All / Show Less toggle

@@ -98,6 +98,10 @@ namespace TaoTie.Inspector.Editor
 
             foreach (var entry in entries)
             {
+                // IsFoldoutGroup entries (e.g. [Serializable] class elements inside arrays)
+                // must remain visible — they are drawn as foldout containers by TaoTieGroupManager
+                if (entry.IsFoldoutGroup) continue;
+
                 // Check if this entry is a child of a multi-component field or array
                 bool isHiddenChild = false;
                 if (entry.PropertyPath != null)
