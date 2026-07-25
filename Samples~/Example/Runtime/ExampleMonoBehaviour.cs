@@ -5,7 +5,7 @@ using TaoTie.Inspector;
 
 namespace TaoTie.Inspector
 {
-    public class TaoTieInspectorTest : MonoBehaviour
+    public class ExampleMonoBehaviour : MonoBehaviour
     {
         public TaoTieInspectorObject obj = new TaoTieInspectorObject();
 

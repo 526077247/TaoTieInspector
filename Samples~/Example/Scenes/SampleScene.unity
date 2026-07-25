@@ -133,7 +133,7 @@ GameObject:
   - component: {fileID: 687588911}
   - component: {fileID: 687588912}
   m_Layer: 0
-  m_Name: TaoTieInspectorTest
+  m_Name: ExampleMonoBehaviour
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -163,35 +163,35 @@ MonoBehaviour:
   m_GameObject: {fileID: 687588909}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 90471cf642df5eb47b05e177a716960b, type: 3}
+  m_Script: {fileID: 11500000, guid: feda247d41b032a42bc2421d675263b3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   obj:
     characterName: Hero
-    level: 2
-    maxHealth: 110
+    level: 1
+    maxHealth: 100
     attack: 10
-    defense: 5.18
+    defense: 5
     criticalRate: 0.1
     criticalDamage: 1.5
-    showAdvanced: 1
+    showAdvanced: 0
     damageType: 0
-    characterColor: {r: 1, g: 0.08018869, b: 0.08018869, a: 1}
-    volume: 0
+    characterColor: {r: 1, g: 1, b: 1, a: 1}
+    volume: 0.8
     moveSpeed: 5
     jumpHeight: 3
     configId: TT_001
-    disabledTest: "\u5F53 level > 0 \u65F6\u7981\u7528"
-    enabledTest: "\u5F53 showAdvanced \u4E3A true \u65F6\u542F\u7528"
+    disabledTest: Disabled when level > 0
+    enabledTest: Enabled when showAdvanced is true
     IsGlobal: 0
     EnableVision: 1
     ViewPanoramic: 0
-    showWhenNotGlobal: "IsGlobal=false \u65F6\u53EF\u89C1"
-    showWhenVisionAndNotPanoramic: INVALID_UTF8_STRINGGGGGGGGGGGGGG
-    showWhenComplexExpr: INVALID_UTF8_STRING
-    hideWhenGlobalAndPanoramic: "IsGlobal && ViewPanoramic \u65F6\u9690\u85CF"
-    watchedName: initial333
-  unityRangeInt: 63
+    showWhenNotGlobal: Visible when IsGlobal=false
+    showWhenVisionAndNotPanoramic: Visible when EnableVision && !ViewPanoramic
+    showWhenComplexExpr: Visible when (IsGlobal||EnableVision)&&!ViewPanoramic
+    hideWhenGlobalAndPanoramic: Hidden when IsGlobal && ViewPanoramic
+    watchedName: initial
+  unityRangeInt: 50
   unityRangeFloat: 0.5
   unityMinInt: 10
   leftAlignField: left
@@ -200,46 +200,40 @@ MonoBehaviour:
   noLineField: no line
   indentedField: indented
   showInfoBox: 1
-  conditionalInfoBox: check1
+  conditionalInfoBox: check
   infoInfoBox: info
   warningInfoBox: warn
   errorInfoBox: error
-  clampedInt: 100
-  clampedFloat: 0
-  clampedLong: -10
-  clampedDouble: -1.5
-  disabledInEditor: "\u7F16\u8F91\u6A21\u5F0F\u7981\u7528"
-  spacedBeforeAfter: "\u524D\u540E\u95F4\u8DDD"
-  nestInner1: inner11
+  clampedInt: 50
+  clampedFloat: 0.5
+  clampedLong: 5
+  clampedDouble: 0.5
+  disabledInEditor: Disabled in edit mode
+  spacedBeforeAfter: Spacing before and after
+  nestInner1: inner1
   nestInner2: inner2
   nestDirect: direct
   hField1: 1
   hField2: 2
   tableData:
-  - name: 
+  - name: Row1
     value: 1
-  - name: 
-    value: 0
-  - name: 
-    value: 0
-  - name: 
-    value: 0
-  - name: 1
+  - name: Row2
     value: 2
-  requiredObject: {fileID: 687588909}
-  requiredTransform: {fileID: 963194228}
+  requiredObject: {fileID: 0}
+  requiredTransform: {fileID: 0}
   filteredSkill:
     rid: -2
   nestedFilteredSkill:
     rid: -2
   hiddenPickerSkill:
-    rid: -2
+    rid: 7624621125867667462
   disabledFilteredSkill:
     rid: -2
   groupedDisabledSkill:
-    rid: -2
+    rid: 7624621125867667463
   disabledHiddenPickerSkill:
-    rid: -2
+    rid: 7624621125867667464
   condA: 1
   condB: 0
   condC: 1
@@ -259,25 +253,23 @@ MonoBehaviour:
   rangeMin: 0
   rangeMax: 10
   dynamicRangeValue: 5
-  flagsEnum: 7
+  flagsEnum: 5
   readOnlyString: can't edit
   readOnlyInt: 999
   groupedReadOnly: grouped ro
   callbackList:
   - apple
   - banana
-  - banana
-  - banana
-  callbackArray: 040000000500000005000000
+  callbackArray: 010000000200000003000000
   callbackTableList:
   - name: a
     value: 1
-  dropdownInt: 2
+  dropdownInt: 1
   dropdownIntList: 010000000200000003000000
-  dropdownIntArray: 01000000140000001e000000
-  dropdownAppendInt: 3
-  dropdownAppendList: 01000000020000000400000002000000
-  dropdownAppendArray: 010000000e000000
+  dropdownIntArray: 0a000000140000001e000000
+  dropdownAppendInt: 0
+  dropdownAppendList: 64000000c8000000
+  dropdownAppendArray: 070000000e000000
   dropdownString: alpha
   dropdownStringList:
   - alpha
@@ -292,6 +284,27 @@ MonoBehaviour:
     RefIds:
     - rid: -2
       type: {class: , ns: , asm: }
+    - rid: 7624621125867667462
+      type: {class: AttackSkill, ns: TaoTie.Inspector, asm: TaoTie.Inspector.Example}
+      data:
+        skillName: 
+        cooldown: 1
+        damage: 10
+        range: 5
+    - rid: 7624621125867667463
+      type: {class: HealSkill, ns: TaoTie.Inspector, asm: TaoTie.Inspector.Example}
+      data:
+        skillName: 
+        cooldown: 1
+        healAmount: 50
+        healRange: 10
+    - rid: 7624621125867667464
+      type: {class: DefenseSkill, ns: TaoTie.Inspector, asm: TaoTie.Inspector.Example}
+      data:
+        skillName: 
+        cooldown: 1
+        defense: 20
+        duration: 3
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

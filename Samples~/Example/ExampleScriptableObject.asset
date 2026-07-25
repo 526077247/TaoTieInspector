@@ -1,0 +1,77 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46cab6ae469dd324eb77c61c329ae74f, type: 3}
+  m_Name: ExampleScriptableObject
+  m_EditorClassIdentifier: 
+  itemName: Default Item
+  count: 1
+  price: 9.99
+  rarity: 0
+  categories: 9
+  showAdvanced: 0
+  bonusDamage: 0
+  bonusDefense: 0
+  simpleHint: Enable Show Advanced for more options
+  legendaryEffect: Grants invulnerability for 3 seconds
+  attack: 10
+  defense: 5
+  maxHp: 100
+  maxMp: 50
+  iconColor: {r: 1, g: 1, b: 1, a: 1}
+  showGlow: 0
+  tier: 1
+  difficultyScale: 1
+  tags:
+  - new
+  - default
+  itemTable:
+  - name: Potion
+    count: 5
+    weight: 1
+  - name: Scroll
+    count: 2
+    weight: 0.5
+  selectedSkillId: 1001
+  skillWithDropdown: 1002
+  skillList: e9030000eb030000
+  effectInstance:
+    rid: -2
+  hiddenPickerEffect:
+    rid: 7624621125867667461
+  runtimeEffect:
+    rid: -2
+  displayName: Test Item
+  tagsWithCallback:
+  - tag1
+  - tag2
+  itemGuid: 00000000-0000-0000-0000-000000000000
+  runtimeOnlyField: can't edit in editor mode
+  minRange: 0
+  maxRange: 100
+  dynamicValue: 50
+  deepL1: level1
+  deepL2: level2
+  deepL1Float: 3.14
+  visibleWhenEnabled: visible
+  enabledByStatic: 1
+  references:
+    version: 2
+    RefIds:
+    - rid: -2
+      type: {class: , ns: , asm: }
+    - rid: 7624621125867667461
+      type: {class: DamageEffect, ns: TaoTie.Inspector, asm: TaoTie.Inspector.Example}
+      data:
+        effectName: 
+        duration: 1
+        damage: 20
+        damageType: 0

@@ -76,6 +76,9 @@ namespace TaoTie.Inspector.Editor
             var entries = processor.BuildEntries(serializedObject);
             processor.RefreshDynamicState(entries, target);
 
+            // Set all entries for DrawArrayBox to find child entries (LabelText etc.)
+            TaoTiePropertyLayout.SetAllEntries(entries);
+
             // Build a merged list of SerializedProperty entries AND unserialized fields (Dictionary etc.)
             // in declaration order, so Dictionary fields appear at their correct position among siblings.
             var mergedEntries = BuildMergedEntries(entries, target);
@@ -145,12 +148,16 @@ namespace TaoTie.Inspector.Editor
             var managedRefPaths = new HashSet<string>();
             foreach (var e in mergedEntries)
             {
-                if ((e.TypeFilter != null || e.HideReferenceObjectPicker != null)
-                    && e.Property != null
-                    && e.Property.propertyType == SerializedPropertyType.ManagedReference)
+                try
                 {
-                    managedRefPaths.Add(e.PropertyPath + ".");
+                    if ((e.TypeFilter != null || e.HideReferenceObjectPicker != null)
+                        && e.Property != null
+                        && e.Property.propertyType == SerializedPropertyType.ManagedReference)
+                    {
+                        managedRefPaths.Add(e.PropertyPath + ".");
+                    }
                 }
+                catch { /* property may be disposed after array element deletion */ }
             }
             // Collect pending managed reference clear paths
             var pendingClearPaths = TaoTiePropertyLayout.GetPendingClearPaths();
@@ -191,6 +198,10 @@ namespace TaoTie.Inspector.Editor
             TaoTiePropertyLayout.ApplyPendingManagedReferences(serializedObject);
             serializedObject.ApplyModifiedProperties();
             TaoTiePropertyLayout.FlushPendingCallbacks();
+
+            // Clear entry cache so next frame rebuilds with fresh SerializedProperty references
+            // (array element deletions invalidate cached property references)
+            processor.ClearCache();
         }
 
         /// <summary>

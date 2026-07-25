@@ -38,6 +38,14 @@ namespace TaoTie.Inspector.Editor
             var root = new GroupNode { Name = "", FullPath = "" };
             var nodeMap = new Dictionary<string, GroupNode> { [""] = root };
 
+            // Build a set of container paths for fast lookup
+            var containerPaths = new HashSet<string>();
+            foreach (var entry in entries)
+            {
+                if (entry.Visible && entry.IsFoldoutContainer)
+                    containerPaths.Add(entry.ContainerPath);
+            }
+
             foreach (var entry in entries)
             {
                 if (!entry.Visible) continue;
@@ -48,25 +56,52 @@ namespace TaoTie.Inspector.Editor
                     string path = entry.ContainerPath;
                     if (!nodeMap.ContainsKey(path))
                     {
-                        nodeMap[path] = new GroupNode
+                        var containerNode = new GroupNode
                         {
                             Name = entry.ContainerName,
                             FullPath = path,
                             IsFoldoutContainer = true
                         };
+                        nodeMap[path] = containerNode;
+                        root.Children.Add(containerNode);
+                        containerNode.Parent = root;
                     }
                     nodeMap[path].DirectEntries.Add(entry);
                     continue;
                 }
 
-                string groupPath = entry.GetGroupPath();
-                if (string.IsNullOrEmpty(groupPath))
+                // Check if this entry is a child of a foldout container by PropertyPath
+                string childPropPath = (entry.UserData as TaoTiePropertyEntry)?.PropertyPath
+                    ?? (entry.UserData as System.Reflection.MemberInfo)?.Name;
+                string containerParent = null;
+                if (childPropPath != null)
                 {
-                    root.DirectEntries.Add(entry);
+                    foreach (var cp in containerPaths)
+                    {
+                        if (childPropPath.StartsWith(cp + "."))
+                        {
+                            containerParent = cp;
+                            break;
+                        }
+                    }
+                }
+
+                if (containerParent != null)
+                {
+                    // Add to container node as a direct entry
+                    nodeMap[containerParent].DirectEntries.Add(entry);
                 }
                 else
                 {
-                    EnsureNode(nodeMap, root, groupPath, entry);
+                    string groupPath = entry.GetGroupPath();
+                    if (string.IsNullOrEmpty(groupPath))
+                    {
+                        root.DirectEntries.Add(entry);
+                    }
+                    else
+                    {
+                        EnsureNode(nodeMap, root, groupPath, entry);
+                    }
                 }
             }
 

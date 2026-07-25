@@ -409,9 +409,9 @@ namespace TaoTie.Inspector.Editor
             }
             else
             {
-                if (entry.Property.isArray)
+                if (entry.Property.isArray && entry.Property.propertyType != SerializedPropertyType.String)
                 {
-                    changed = DrawArrayBox(entry);
+                    changed = DrawArrayBox(entry, target);
                 }
                 // HideReferenceObjectPicker only applies to ManagedReference, not ObjectReference
                 else if (entry.HideReferenceObjectPicker != null && entry.Property.propertyType == SerializedPropertyType.ManagedReference)
@@ -786,7 +786,163 @@ namespace TaoTie.Inspector.Editor
         /// Draw a plain array/list in box+grid style, matching TableList layout.
         /// Each element is drawn as a single-line PropertyField with index label and delete button.
         /// </summary>
-        private static bool DrawArrayBox(TaoTiePropertyEntry entry)
+        private static List<TaoTiePropertyEntry> s_allEntries;
+
+        public static void SetAllEntries(List<TaoTiePropertyEntry> entries) => s_allEntries = entries;
+
+        /// <summary>
+        /// Find a TaoTiePropertyEntry for a child SerializedProperty by matching propertyPath.
+        /// </summary>
+        /// <summary>
+        /// Draw a nested array inside a [Serializable] element — simple foldout + element children.
+        /// Each [Serializable] element gets its own foldout with children drawn via DrawProperty.
+        /// </summary>
+        private static bool DrawNestedArray(TaoTiePropertyEntry entry, object target)
+        {
+            int savedIndent = EditorGUI.indentLevel;
+            try
+            {
+                return DrawNestedArrayInternal(entry, target);
+            }
+            finally
+            {
+                EditorGUI.indentLevel = savedIndent;
+            }
+        }
+
+        private static bool DrawNestedArrayInternal(TaoTiePropertyEntry entry, object target)
+        {
+            var prop = entry.Property;
+            bool changed = false;
+            var label = GetLabel(entry);
+            string title = label?.text ?? prop.displayName;
+
+            // Use prop.isExpanded for GUILayout consistency
+            bool foldout = prop.isExpanded;
+            // Draw foldout on its own line (no FlexibleSpace interference)
+            Rect foldoutRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            // Draw + / - buttons at right edge first (they take priority over foldout click)
+            float btnW = 24f;
+            Rect minusRect = new Rect(foldoutRect.xMax - btnW, foldoutRect.y, btnW, foldoutRect.height);
+            Rect plusRect = new Rect(minusRect.x - btnW - 2f, foldoutRect.y, btnW, foldoutRect.height);
+            // Foldout rect excludes the button area so clicks on buttons don't toggle foldout
+            Rect actualFoldoutRect = new Rect(foldoutRect.x, foldoutRect.y, plusRect.x - foldoutRect.x - 4f, foldoutRect.height);
+            bool newFoldout = EditorGUI.Foldout(actualFoldoutRect, foldout, $"{title} ({prop.arraySize})", true);
+            // Only write back if changed — ExitGUI to force re-layout on next frame
+            if (newFoldout != foldout)
+            {
+                prop.isExpanded = newFoldout;
+                GUIUtility.ExitGUI();
+            }
+            if (GUI.Button(plusRect, "+"))
+            {
+                prop.arraySize++;
+                changed = true;
+            }
+            if (GUI.Button(minusRect, "-"))
+            {
+                if (prop.arraySize > 0) { prop.arraySize--; changed = true; }
+            }
+
+            if (foldout)
+            {
+                EditorGUI.indentLevel++;
+                for (int i = 0; i < prop.arraySize; i++)
+                {
+                    var element = prop.GetArrayElementAtIndex(i);
+                bool elementIsSimple = !element.hasVisibleChildren || element.isArray;
+
+                if (elementIsSimple)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    EditorGUILayout.PropertyField(element, GUIContent.none, true);
+                    if (EditorGUI.EndChangeCheck())
+                        changed = true;
+                }
+                else
+                {
+                    // [Serializable] class element — foldout + children
+                    bool nestElemExpanded = element.isExpanded;
+                    EditorGUILayout.BeginHorizontal();
+                    bool nestNewExpanded = EditorGUILayout.Foldout(nestElemExpanded, element.displayName, true);
+                    if (GUILayout.Button("×", GUILayout.Width(22)))
+                    {
+                        prop.DeleteArrayElementAtIndex(i);
+                        changed = true;
+                        break;
+                    }
+                    EditorGUILayout.EndHorizontal();
+
+                    // Handle foldout state change with ExitGUI
+                    if (nestNewExpanded != nestElemExpanded)
+                    {
+                        element.isExpanded = nestNewExpanded;
+                        GUIUtility.ExitGUI();
+                    }
+
+                    if (element.isExpanded)
+                    {
+                        EditorGUI.indentLevel++;
+                        var childProp = element.Copy();
+                        int targetDepth = element.depth + 1;
+                        if (childProp.NextVisible(true))
+                        {
+                            do
+                            {
+                                if (childProp.depth != targetDepth) break;
+                                var childEntry = FindChildEntry(entry, childProp);
+                                if (childEntry != null)
+                                {
+                                    if (childEntry.Property != null && childEntry.Property.isArray
+                                        && childEntry.Property.propertyType != SerializedPropertyType.String)
+                                    {
+                                        changed |= DrawNestedArray(childEntry, target);
+                                    }
+                                    else
+                                    {
+                                        DrawProperty(childEntry, target);
+                                    }
+                                }
+                                else
+                                    EditorGUILayout.PropertyField(childProp, true);
+                            } while (childProp.NextVisible(false));
+                        }
+                        EditorGUI.indentLevel--;
+                        EditorGUILayout.Space(2);
+                    }
+                }
+            }
+            }
+            EditorGUI.indentLevel--;
+            return changed;
+        }
+
+        private static TaoTiePropertyEntry FindChildEntry(TaoTiePropertyEntry parentEntry, SerializedProperty childProp)
+        {
+            if (s_allEntries == null) return null;
+            string childPath = childProp.propertyPath;
+            foreach (var e in s_allEntries)
+            {
+                if (e.PropertyPath == childPath)
+                    return e;
+            }
+            return null;
+        }
+
+        private static bool DrawArrayBox(TaoTiePropertyEntry entry, object target = null)
+        {
+            int savedIndent = EditorGUI.indentLevel;
+            try
+            {
+                return DrawArrayBoxInternal(entry, target);
+            }
+            finally
+            {
+                EditorGUI.indentLevel = savedIndent;
+            }
+        }
+
+        private static bool DrawArrayBoxInternal(TaoTiePropertyEntry entry, object target)
         {
             var prop = entry.Property;
             bool changed = false;
@@ -876,20 +1032,58 @@ namespace TaoTie.Inspector.Editor
                     }
                     else
                     {
-                        // [Serializable] class element — use GUILayout for dynamic height
+                        // [Serializable] class element — foldout + children drawn vertically
+                        // Header row: index + foldout + delete button
+                        bool elemExpanded = element.isExpanded;
                         EditorGUILayout.BeginHorizontal();
                         EditorGUILayout.LabelField(i.ToString(), GUILayout.Width(indexColW));
-                        EditorGUI.BeginChangeCheck();
-                        EditorGUILayout.PropertyField(element, GUIContent.none, true);
-                        if (EditorGUI.EndChangeCheck())
-                            changed = true;
+                        bool newElemExpanded = EditorGUILayout.Foldout(elemExpanded, element.displayName, true);
                         if (GUILayout.Button("×", GUILayout.Width(deleteColW)))
                         {
                             prop.DeleteArrayElementAtIndex(i);
                             changed = true;
                         }
                         EditorGUILayout.EndHorizontal();
-                        EditorGUILayout.Space(4);
+
+                        // Handle foldout state change with ExitGUI to avoid Layout/Repaint mismatch
+                        if (newElemExpanded != elemExpanded)
+                        {
+                            element.isExpanded = newElemExpanded;
+                            GUIUtility.ExitGUI();
+                        }
+
+                        if (element.isExpanded)
+                        {
+                            EditorGUI.indentLevel += 3;
+                            var childProp = element.Copy();
+                            int targetDepth = element.depth + 1;
+                            if (childProp.NextVisible(true))
+                            {
+                                do
+                                {
+                                    if (childProp.depth != targetDepth) break;
+                                    var childEntry = FindChildEntry(entry, childProp);
+                                    if (childEntry != null)
+                                    {
+                                        // For nested arrays inside [Serializable] elements,
+                                        // recursively draw with foldout + element children
+                                        if (childEntry.Property != null && childEntry.Property.isArray
+                                            && childEntry.Property.propertyType != SerializedPropertyType.String)
+                                        {
+                                            changed |= DrawNestedArray(childEntry, target);
+                                        }
+                                        else
+                                        {
+                                            DrawProperty(childEntry, target);
+                                        }
+                                    }
+                                    else
+                                        EditorGUILayout.PropertyField(childProp, true);
+                                } while (childProp.NextVisible(false));
+                            }
+                            EditorGUI.indentLevel -= 3;
+                            EditorGUILayout.Space(4);
+                        }
                     }
                 }
 

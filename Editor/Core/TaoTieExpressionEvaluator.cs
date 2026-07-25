@@ -22,6 +22,7 @@ namespace TaoTie.Inspector.Editor
             RParen,
             True,
             False,
+            Null,
             EOF
         }
 
@@ -138,6 +139,8 @@ namespace TaoTie.Inspector.Editor
                         result.Add(new Token { Type = TokenType.True, Text = word });
                     else if (string.Equals(word, "false", StringComparison.OrdinalIgnoreCase))
                         result.Add(new Token { Type = TokenType.False, Text = word });
+                    else if (string.Equals(word, "null", StringComparison.OrdinalIgnoreCase))
+                        result.Add(new Token { Type = TokenType.Null, Text = word });
                     else
                         result.Add(new Token { Type = TokenType.Identifier, Text = word });
                     continue;
@@ -230,6 +233,9 @@ namespace TaoTie.Inspector.Editor
                 case TokenType.False:
                     Advance();
                     return false;
+                case TokenType.Null:
+                    Advance();
+                    return null;
                 case TokenType.LParen:
                     Advance();
                     bool val = ParseOr(target);

@@ -1363,15 +1363,18 @@ namespace TaoTie.Inspector.Editor
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
             EditorGUILayout.BeginVertical(boxStyle);
 
-            // Foldout title bar with rect-based style
+            // Foldout title bar — same indent pattern as DrawArrayBox/List
             string dicFoldKey = "TaoTie_Fold_Dict_" + field.Name + "_" + obj.GetHashCode();
             bool dicFoldout = SessionState.GetBool(dicFoldKey, false);
+            int dicOldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
             Rect dicTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(dicTitleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
             string dicTitle = (GetShowName(field)?.text ?? ObjectNames.NicifyVariableName(field.Name)) + $" ({dictionary.Count})";
-            dicFoldout = EditorGUI.Foldout(new Rect(dicTitleRect.x + 4f, dicTitleRect.y, dicTitleRect.width - 8f, dicTitleRect.height),
+            dicFoldout = EditorGUI.Foldout(new Rect(dicTitleRect.x + 14f, dicTitleRect.y, dicTitleRect.width - 18f, dicTitleRect.height),
                 dicFoldout, new GUIContent(dicTitle), true);
             SessionState.SetBool(dicFoldKey, dicFoldout);
+            EditorGUI.indentLevel = dicOldIndent;
 
             if (dicFoldout)
             {

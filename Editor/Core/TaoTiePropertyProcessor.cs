@@ -34,10 +34,10 @@ namespace TaoTie.Inspector.Editor
                 var entry = CreateEntry(iter, fieldMap);
 
                 // For nested [Serializable] objects, draw as a foldout group
-                // But NOT for Vector2/3/4/Color/Rect/Bounds etc. — these have visible children
-                // (x,y,z) but should be drawn as a single field by PropertyField
+                // But NOT for array elements (handled by DrawArrayBox) or Vector2/3/4/Color etc.
                 bool isStructWithChildren = iter.propertyType == SerializedPropertyType.Generic && iter.hasVisibleChildren
-                    && !iter.isArray;
+                    && !iter.isArray
+                    && !iter.propertyPath.Contains(".Array.data[");
                 // Check if this is actually a Generic type (not Vector2/3/4/Color/etc.)
                 // Vector2/3/4 have propertyType == Vector2/Vector3/Vector4, NOT Generic
                 // But we also need to skip drawing their children (.x, .y, .z) separately
@@ -98,10 +98,6 @@ namespace TaoTie.Inspector.Editor
 
             foreach (var entry in entries)
             {
-                // IsFoldoutGroup entries (e.g. [Serializable] class elements inside arrays)
-                // must remain visible — they are drawn as foldout containers by TaoTieGroupManager
-                if (entry.IsFoldoutGroup) continue;
-
                 // Check if this entry is a child of a multi-component field or array
                 bool isHiddenChild = false;
                 if (entry.PropertyPath != null)
@@ -253,30 +249,41 @@ namespace TaoTie.Inspector.Editor
                 return field;
             }
 
-            // Nested path: traverse "obj.characterName" → find obj field → get its type → find characterName
-            string[] parts = prop.propertyPath.Split('.');
-            Type currentType = prop.serializedObject.targetObject.GetType();
-            FieldInfo result = null;
+            // Nested path: traverse parts, skipping Unity array internals (Array, data[N])
+            var parts = new List<string>();
+            foreach (var part in prop.propertyPath.Split('.'))
+            {
+                if (part == "Array") continue;
+                if (part.StartsWith("data[")) continue;
+                parts.Add(part);
+            }
+
+            if (parts.Count == 0) return null;
+            // Top-level field
+            if (!rootFieldMap.TryGetValue(parts[0], out FieldInfo result)) return null;
+            if (parts.Count == 1) return result;
+
+            Type currentType = result.FieldType;
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-            foreach (string part in parts)
+            for (int i = 1; i < parts.Count; i++)
             {
                 if (currentType == null) return null;
-                result = currentType.GetField(part, flags);
-                // Try base types
-                Type baseType = currentType.BaseType;
-                while (result == null && baseType != null && baseType != typeof(object))
-                {
-                    result = baseType.GetField(part, flags);
-                    baseType = baseType.BaseType;
-                }
-                if (result == null) return null;
-                currentType = result.FieldType;
-                // Strip array/list element type
+                // Strip array/list element type before looking up field
                 if (currentType.IsArray)
                     currentType = currentType.GetElementType();
                 else if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(List<>))
                     currentType = currentType.GetGenericArguments()[0];
+
+                result = currentType.GetField(parts[i], flags);
+                Type baseType = currentType.BaseType;
+                while (result == null && baseType != null && baseType != typeof(object))
+                {
+                    result = baseType.GetField(parts[i], flags);
+                    baseType = baseType.BaseType;
+                }
+                if (result == null) return null;
+                currentType = result.FieldType;
             }
 
             return result;
