@@ -1161,6 +1161,7 @@ namespace TaoTie.Inspector.Editor
                     if (i >= list.Count) break;
                     var item = list[i];
                     bool isValueType = itemType.IsValueType || itemType == stringType;
+                    bool isUnityObject = objectType.IsAssignableFrom(itemType);
                     bool subFold = false;
                     float rowHeight = EditorGUIUtility.singleLineHeight + 2f;
 
@@ -1190,6 +1191,17 @@ namespace TaoTie.Inspector.Editor
                         if (EditorGUI.EndChangeCheck() && !IsEqual(newValue, item))
                         {
                             list[i] = newValue;
+                            changed = true;
+                        }
+                    }
+                    else if (isUnityObject)
+                    {
+                        // UnityEngine.Object — draw ObjectField
+                        Rect objRect = new Rect(x, rowRect.y, contentW, rowRect.height);
+                        UnityEngine.Object newObj = EditorGUI.ObjectField(objRect, (UnityEngine.Object)item, itemType, false);
+                        if (!IsEqual(newObj, item))
+                        {
+                            list[i] = newObj;
                             changed = true;
                         }
                     }
