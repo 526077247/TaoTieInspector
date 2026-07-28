@@ -46,18 +46,19 @@ namespace TaoTie.Inspector.Editor
             if (attribute.AppendNextDrawer)
             {
                 // Draw the original field first, then append a ▼ dropdown button beside it.
-                // Use PrefixLabel so the label takes only its natural width, leaving room for the button.
-                Rect rowRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+                // Use EditorGUILayout.PropertyField so Unity handles indent/label automatically.
+                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.PropertyField(property, label, false);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    property.serializedObject.ApplyModifiedProperties();
+                    property.serializedObject.Update();
+                }
+
+                // Append ▼ button on a new line right-aligned
+                Rect btnRowRect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
                 float btnW = 22f;
-                Rect btnRect = new Rect(rowRect.xMax - btnW, rowRect.y, btnW, rowRect.height);
-
-                // PrefixLabel consumes label portion and returns the remaining content rect
-                Rect contentRect = EditorGUI.PrefixLabel(rowRect, label);
-                // Shrink content rect to leave room for the button
-                contentRect.width -= btnW + 2f;
-
-                // Draw the default field in the content area (no label — already drawn by PrefixLabel)
-                EditorGUI.PropertyField(contentRect, property, GUIContent.none, false);
+                Rect btnRect = new Rect(btnRowRect.xMax - btnW, btnRowRect.y, btnW, btnRowRect.height);
 
                 if (GUI.Button(btnRect, "▼", EditorStyles.miniButton))
                 {
@@ -99,14 +100,17 @@ namespace TaoTie.Inspector.Editor
 
             string currentText = selectedIndex >= 0 ? items[selectedIndex].Text : property.displayName;
 
+            // Use EditorGUILayout to let Unity handle indent/label automatically
             Rect rect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             GUIContent buttonContent = new GUIContent(currentText);
 
+            // PrefixLabel handles indent — returns content area after label
             if (label != null)
             {
                 rect = EditorGUI.PrefixLabel(rect, label);
             }
 
+            // Use GUI.Button with popup style — rect is already indented by GetControlRect + PrefixLabel
             if (GUI.Button(rect, buttonContent, EditorStyles.popup))
             {
                 ValueDropdownPopup.Show(rect, items, selectedIndex, (idx) =>
@@ -215,11 +219,12 @@ namespace TaoTie.Inspector.Editor
                     }
                 }
 
-                float contentW = dropdownColW;
+                // Use available width from current x to row end minus delete button
+                float contentW = rowRect.xMax - x - deleteColW - 2f;
 
                 if (attribute.AppendNextDrawer)
                 {
-                    // AppendNextDrawer: draw the original field + ▼ button
+                    // AppendNextDrawer: draw field + ▼ button in remaining space
                     float btnW = 22f;
                     Rect btnRect = new Rect(x + contentW - btnW, rowRect.y, btnW, rowRect.height);
                     Rect fieldRect = new Rect(x, rowRect.y, contentW - btnW - 2f, rowRect.height);

@@ -354,6 +354,8 @@ namespace TaoTie.Inspector.Editor
                     if (field.DeclaringType?.GetEvent(field.Name, flags) != null) continue;
                     // Skip NonSerialized (but Dictionary is inherently non-serialized, so check attribute explicitly)
                     if (field.IsDefined(typeof(NonSerializedAttribute), false)) continue;
+                    // Skip private fields without [SerializeField] (e.g. private DrawBase drawBase)
+                    if (!field.IsPublic && !field.IsDefined(typeof(SerializeField), true)) continue;
                     // Skip DrawIgnore(All)
                     if (field.GetCustomAttribute<DrawIgnoreAttribute>() is DrawIgnoreAttribute dia && dia.Ignore == Ignore.All) continue;
 

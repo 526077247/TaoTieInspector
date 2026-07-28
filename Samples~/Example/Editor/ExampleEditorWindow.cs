@@ -7,6 +7,7 @@ using TaoTie.Inspector.Editor;
 
 namespace TaoTie.Inspector
 {
+
     public class ExampleEditorWindow : TaoTieEditorWindow
     {
         [MenuItem("Tools/Example Editor Window")]
@@ -15,10 +16,12 @@ namespace TaoTie.Inspector
             var window = GetWindow<ExampleEditorWindow>();
             window.titleContent = new GUIContent("Example Editor Window");
             window.Show();
+            window.data = new TaoTieInspectorObject();
         }
-
+        
         protected override string GetWindowTitle() => "Example Editor Window";
-
+        [ShowIf("@data!=null")] [HideReferenceObjectPicker] public TaoTieInspectorObject data;
+        
         #region Basic Attributes
 
         [LabelText("Custom Label")]
@@ -590,6 +593,14 @@ namespace TaoTie.Inspector
         public TooltipTestClass tooltipTest;
 
         #endregion
+
+        #region Nested ValueDropdown Test
+
+        [Title("Nested ValueDropdown Test", true)]
+        [LabelText("Root Node")]
+        public NestedNode root = new NestedNode { name = "Root", child = new NestedNode { name = "Child" } };
+
+        #endregion
     }
 
     #region Shared Serializable Classes
@@ -726,4 +737,47 @@ namespace TaoTie.Inspector
     }
 
     #endregion
+
+    [Serializable]
+    public class NestedNode
+    {
+        [LabelText("Name")]
+        public string name = "";
+
+        [ValueDropdown("@" + nameof(DropdownHelper) + "." + nameof(DropdownHelper.GetEmoji) + "()")]
+        [LabelText("Emoji")]
+        public string emoji = "🔥";
+
+        [ValueDropdown("@" + nameof(DropdownHelper) + "." + nameof(DropdownHelper.GetPriority) + "()")]
+        [LabelText("Priority")]
+        public int priority = 1;
+
+        [LabelText("Child Node")]
+        public NestedNode child;
+
+        [LabelText("Sibling List")]
+        public List<NestedNode> siblings = new List<NestedNode>();
+    }
+
+    public static class DropdownHelper
+    {
+        public static IEnumerable<ValueDropdownItem> GetEmoji()
+        {
+            yield return new ValueDropdownItem("Fire 🔥", "🔥");
+            yield return new ValueDropdownItem("Ice ❄️", "❄️");
+            yield return new ValueDropdownItem("Lightning ⚡", "⚡");
+            yield return new ValueDropdownItem("Poison ☠️", "☠️");
+            yield return new ValueDropdownItem("Star ⭐", "⭐");
+            yield return new ValueDropdownItem("Heart ❤️", "❤️");
+        }
+
+        public static IEnumerable<ValueDropdownItem> GetPriority()
+        {
+            yield return new ValueDropdownItem("Low", 1);
+            yield return new ValueDropdownItem("Normal", 2);
+            yield return new ValueDropdownItem("High", 3);
+            yield return new ValueDropdownItem("Critical", 4);
+            yield return new ValueDropdownItem("Max", 5);
+        }
+    }
 }

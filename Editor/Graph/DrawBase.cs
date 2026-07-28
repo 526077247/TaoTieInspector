@@ -89,15 +89,14 @@ namespace TaoTie.Inspector.Editor
             // Graph context: use smaller foldout x offset
             s_FoldoutXOffset = 4f;
 
-            // Set adaptive label width: Title:Content = 4:6 with minimum
-            float oldLabelW = EditorGUIUtility.labelWidth;
-            SetAdaptiveLabelWidth();
-
             // s_AvailableWidth should be set by the caller (e.g. GraphWindowDraw.DrawInspector)
             // via SetAvailableWidth before calling DrawObjectInspector.
             // If not set, fall back to currentViewWidth.
             if (s_AvailableWidth <= 0)
                 s_AvailableWidth = EditorGUIUtility.currentViewWidth - 40f;
+
+            // Set adaptive label width: Title:Content = 4:6 with minimum
+            SetAdaptiveLabelWidth();
 
             var members = GetSortMember(obj);
 
@@ -141,8 +140,6 @@ namespace TaoTie.Inspector.Editor
                 DrawMemberInspector((System.Reflection.MemberInfo)data.UserData, obj, isDetails);
             });
             gm.Dispose();
-
-            EditorGUIUtility.labelWidth = oldLabelW;
         }
 
         /// <summary>
@@ -152,9 +149,10 @@ namespace TaoTie.Inspector.Editor
         protected static void SetAdaptiveLabelWidth(float minWidth = 80f)
         {
             float available = s_AvailableWidth > 0 ? s_AvailableWidth : EditorGUIUtility.currentViewWidth;
-            // Account for indent
-            available -= EditorGUI.indentLevel * 15f;
-            float ratioWidth = available * 0.4f;
+            // labelWidth = full width * 0.4, then add back indent so the label portion
+            // stays constant and only the value area shrinks with indent.
+            float indentSpace = EditorGUI.indentLevel * 15f;
+            float ratioWidth = (available - indentSpace) * 0.4f + indentSpace;
             EditorGUIUtility.labelWidth = Mathf.Max(minWidth, ratioWidth);
         }
         
@@ -372,7 +370,7 @@ namespace TaoTie.Inspector.Editor
                 if (value == null)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(GetShowName(field), GUILayout.Width(150));
+                    EditorGUILayout.PrefixLabel(GetShowName(field));
                     if (GUILayout.Button("New"))
                     {
                         value = Activator.CreateInstance(field.FieldType, 0);
@@ -395,7 +393,7 @@ namespace TaoTie.Inspector.Editor
                 if (value == null)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(GetShowName(field), GUILayout.Width(150));
+                    EditorGUILayout.PrefixLabel(GetShowName(field));
                     if (GUILayout.Button("New"))
                     {
                         var newType = listType.MakeGenericType(field.FieldType.GenericTypeArguments);
@@ -419,7 +417,7 @@ namespace TaoTie.Inspector.Editor
                 if (value == null)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(GetShowName(field), GUILayout.Width(150));
+                    EditorGUILayout.PrefixLabel(GetShowName(field));
                     if (GUILayout.Button("New"))
                     {
                         var newType = dicType.MakeGenericType(field.FieldType.GenericTypeArguments);
@@ -467,7 +465,7 @@ namespace TaoTie.Inspector.Editor
                 {
                     var types = GetSubClassList(field, obj, field.FieldType, out var names);
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(GetShowName(field), GUILayout.Width(150));
+                    EditorGUILayout.PrefixLabel(GetShowName(field));
                     var index = EditorGUILayout.Popup(-1, names);
                     EditorGUILayout.EndHorizontal();
                     if (index >= 0)
@@ -840,13 +838,16 @@ namespace TaoTie.Inspector.Editor
 
             // Background box
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            float tlIndentOffset = 15f * EditorGUI.indentLevel;
+            int tlOldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            EditorGUILayout.BeginHorizontal();
+            if (tlIndentOffset > 0) GUILayout.Space(tlIndentOffset);
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Title bar — rect-based gap-fill
             string tlFoldKey = "TaoTie_Fold_TL_" + field.Name + "_" + obj.GetHashCode();
             bool tlFoldout = SessionState.GetBool(tlFoldKey, false);
-            int tlOldIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = 0;
             Rect tlTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(tlTitleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
             float tlTbX = tlTitleRect.x + 4f;
@@ -897,7 +898,6 @@ namespace TaoTie.Inspector.Editor
                 }
                 tableChanged = true;
             }
-            EditorGUI.indentLevel = tlOldIndent;
 
             // Column headers with drag handles
             if (tlFoldout && colCount > 0)
@@ -1040,6 +1040,8 @@ namespace TaoTie.Inspector.Editor
             }
 
             EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel = tlOldIndent;
             EditorGUILayout.Space(2);
 
             if (tableChanged &&
@@ -1092,13 +1094,16 @@ namespace TaoTie.Inspector.Editor
             float availableWidth = s_AvailableWidth > 0 ? s_AvailableWidth : EditorGUIUtility.currentViewWidth - 40f;
 
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            float indentOffset = 15f * EditorGUI.indentLevel;
+            int oldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            EditorGUILayout.BeginHorizontal();
+            if (indentOffset > 0) GUILayout.Space(indentOffset);
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Foldout title bar with + / - controls
             string foldKey = "TaoTie_Fold_IList_" + field.Name + "_" + obj.GetHashCode();
             bool foldout = SessionState.GetBool(foldKey, false);
-            int oldIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = 0;
             Rect titleBarRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(titleBarRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
             float tbX = titleBarRect.x + 4f;
@@ -1146,7 +1151,6 @@ namespace TaoTie.Inspector.Editor
                     changed = true;
                 }
             }
-            EditorGUI.indentLevel = oldIndent;
 
             if (foldout)
             {
@@ -1283,6 +1287,8 @@ namespace TaoTie.Inspector.Editor
             }
 
             EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel = oldIndent;
             EditorGUILayout.Space(2);
 
             if (changed &&
@@ -1385,20 +1391,22 @@ namespace TaoTie.Inspector.Editor
             float dragHandleW = 6f;
 
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            float dicIndentOffset = 15f * EditorGUI.indentLevel;
+            int dicOldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            EditorGUILayout.BeginHorizontal();
+            if (dicIndentOffset > 0) GUILayout.Space(dicIndentOffset);
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Foldout title bar
             string dicFoldKey = "TaoTie_Fold_Dict_" + field.Name + "_" + obj.GetHashCode();
             bool dicFoldout = SessionState.GetBool(dicFoldKey, false);
-            int dicOldIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = 0;
             Rect dicTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(dicTitleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
             string dicTitle = (GetShowName(field)?.text ?? ObjectNames.NicifyVariableName(field.Name)) + $" ({dictionary.Count})";
             dicFoldout = EditorGUI.Foldout(new Rect(dicTitleRect.x + s_FoldoutXOffset, dicTitleRect.y, dicTitleRect.width - s_FoldoutXOffset - 4f, dicTitleRect.height),
                 dicFoldout, new GUIContent(dicTitle), true);
             SessionState.SetBool(dicFoldKey, dicFoldout);
-            EditorGUI.indentLevel = dicOldIndent;
 
             if (dicFoldout)
             {
@@ -1571,6 +1579,8 @@ namespace TaoTie.Inspector.Editor
             }
 
             EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel = dicOldIndent;
             EditorGUILayout.Space(2);
 
             if (removeKey != null)
@@ -1629,7 +1639,7 @@ namespace TaoTie.Inspector.Editor
                 }
 
                 EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField(GetShowName(field, value), GUILayout.Width(150));
+                EditorGUILayout.PrefixLabel(GetShowName(field, value));
                 var newindex = EditorGUILayout.Popup(index, names);
                 if (newindex != index)
                 {
@@ -1777,7 +1787,7 @@ namespace TaoTie.Inspector.Editor
             {
                 // Cache still empty — draw same layout as main path to avoid GUILayout mismatch
                 EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField(GetShowName(field, value), GUILayout.Width(150));
+                EditorGUILayout.PrefixLabel(GetShowName(field, value));
                 EditorGUILayout.DropdownButton(new GUIContent(showText), FocusType.Passive);
                 if (type != ValueDropdownFieldType.Normal)
                 {
@@ -1791,7 +1801,7 @@ namespace TaoTie.Inspector.Editor
             }
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(GetShowName(field, value), GUILayout.Width(150));
+            EditorGUILayout.PrefixLabel(GetShowName(field, value));
             if (EditorGUILayout.DropdownButton(new GUIContent(showText), FocusType.Passive))
             {
                 RefreshValueDropDown(field, obj, valueDropdownAttribute.MemberName);
@@ -1910,11 +1920,14 @@ namespace TaoTie.Inspector.Editor
             float deleteColW = 22f;
 
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            float vdIndentOffset = 15f * EditorGUI.indentLevel;
+            int vdOldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            EditorGUILayout.BeginHorizontal();
+            if (vdIndentOffset > 0) GUILayout.Space(vdIndentOffset);
             EditorGUILayout.BeginVertical(boxStyle);
 
             // Title bar — rect-based gap-fill
-            int vdOldIndent = EditorGUI.indentLevel;
-            EditorGUI.indentLevel = 0;
             Rect vdTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(vdTitleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
             float vdTbX = vdTitleRect.x + 4f;
@@ -1939,7 +1952,6 @@ namespace TaoTie.Inspector.Editor
             {
                 if (len > 0) { list.RemoveAt(len - 1); changed = true; }
             }
-            EditorGUI.indentLevel = vdOldIndent;
 
             // Data rows
             if (vdFoldout)
@@ -2082,6 +2094,8 @@ namespace TaoTie.Inspector.Editor
             }
 
             EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel = vdOldIndent;
             EditorGUILayout.Space(2);
 
             if (changed)

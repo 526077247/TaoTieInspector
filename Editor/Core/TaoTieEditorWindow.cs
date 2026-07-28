@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEditor;
+using TaoTie.Inspector;
 
 namespace TaoTie.Inspector.Editor
 {
@@ -26,8 +27,8 @@ namespace TaoTie.Inspector.Editor
     /// </summary>
     public abstract class TaoTieEditorWindow : UnityEditor.EditorWindow
     {
-        private DrawBase drawBase;
-        private Vector2 scrollPosition;
+        [DrawIgnore] private DrawBase drawBase;
+        [DrawIgnore] private Vector2 scrollPosition;
 
         /// <summary>
         /// Optional: override to provide a custom title for the window.
