@@ -743,13 +743,10 @@ namespace TaoTie.Inspector.Editor
             else if (objectType.IsAssignableFrom(type)
                      && !(field?.GetCustomAttribute(typeof(NotAssetsAttribute)) is NotAssetsAttribute))
             {
-                if (typeof(Sprite).IsAssignableFrom(type) || typeof(Texture).IsAssignableFrom(type))
-                {
-                    UnityEngine.Object newObj;
-                    if (showName == null) newObj = EditorGUILayout.ObjectField((UnityEngine.Object) value, type, false);
-                    else newObj = EditorGUILayout.ObjectField(showName, (UnityEngine.Object) value, type, false);
-                    value = newObj;
-                }
+                UnityEngine.Object newObj;
+                if (showName == null) newObj = EditorGUILayout.ObjectField((UnityEngine.Object) value, type, false);
+                else newObj = EditorGUILayout.ObjectField(showName, (UnityEngine.Object) value, type, false);
+                value = newObj;
             }
             else if (type == typeof(AnimationCurve))
             {
