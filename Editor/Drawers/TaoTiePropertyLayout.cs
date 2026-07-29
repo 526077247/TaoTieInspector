@@ -601,7 +601,6 @@ namespace TaoTie.Inspector.Editor
             bool changed = false;
             var label = GetLabel(entry);
             string title = label?.text ?? prop.displayName;
-            string tableKey = entry.PropertyPath;
 
             // Collect column definitions from first element
             var columnNames = new List<string>();
@@ -627,35 +626,13 @@ namespace TaoTie.Inspector.Editor
             float indexColW = 28f;
             float deleteColW = 22f;
             float dragHandleW = 6f;
-            float availableWidth = EditorGUIUtility.currentViewWidth - 40f;
-            float defaultColW = colCount > 0 ? (availableWidth - indexColW - deleteColW) / colCount : 0f;
-            if (defaultColW < 50f) defaultColW = 50f;
 
-            // Get or init column widths
-            float[] colWidths;
-            if (!_tableColumnWidths.TryGetValue(tableKey, out colWidths) || colWidths.Length != colCount)
-            {
-                colWidths = new float[colCount];
-                for (int i = 0; i < colCount; i++) colWidths[i] = defaultColW;
-                _tableColumnWidths[tableKey] = colWidths;
-            }
+            string tableKey = "TL3_" + entry.PropertyPath + "_" + colCount;
 
-            // Handle column drag
-            var ev = Event.current;
-            if (ev != null && _draggingTablePath == tableKey && _draggingColumnIndex >= 0 && _draggingColumnIndex < colCount)
-            {
-                if (ev.type == EventType.MouseDrag)
-                {
-                    colWidths[_draggingColumnIndex] = Mathf.Max(30f, colWidths[_draggingColumnIndex] + ev.delta.x);
-                    ev.Use();
-                }
-                if (ev.type == EventType.MouseUp)
-                {
-                    _draggingTablePath = null;
-                    _draggingColumnIndex = -1;
-                    ev.Use();
-                }
-            }
+            // Get or init column widths — initialization deferred to header drawing where actual width is known
+            float[] colWidths = null;
+            if (_tableColumnWidths.TryGetValue(tableKey, out var cached) && cached.Length == colCount)
+                colWidths = cached;
 
             // Background box
             var boxStyle = GetBoxStyle();
@@ -701,28 +678,90 @@ namespace TaoTie.Inspector.Editor
             {
                 var headerRect = EditorGUILayout.GetControlRect(false, 20f);
                 EditorGUI.DrawRect(headerRect, new Color(0.3f, 0.3f, 0.3f, 0.4f));
+
+                // Initialize column widths from actual headerRect width (equal distribution)
+                // Only cache when headerRect width is valid (skip first layout pass with width=1)
+                if (colWidths == null)
+                {
+                    float contentW = headerRect.width - indexColW - deleteColW;
+                    float eachW = Mathf.Max(50f, contentW / colCount);
+                    colWidths = new float[colCount];
+                    for (int i = 0; i < colCount; i++) colWidths[i] = eachW;
+                    if (headerRect.width > 50f)
+                        _tableColumnWidths[tableKey] = colWidths;
+                }
+
+                int dragCtrlId = GUIUtility.GetControlID(tableKey.GetHashCode(), FocusType.Passive);
+                var ev = Event.current;
+
                 float x = headerRect.x;
-                // Index column header
                 EditorGUI.LabelField(new Rect(x, headerRect.y, indexColW, headerRect.height), "#", EditorStyles.boldLabel);
                 x += indexColW;
-                // Column headers with drag handles
                 for (int c = 0; c < colCount; c++)
                 {
                     float cw = colWidths[c];
+                    if (c == colCount - 1)
+                    {
+                        float rightEdge = headerRect.x + headerRect.width - deleteColW;
+                        cw = Mathf.Max(30f, rightEdge - x);
+                    }
                     EditorGUI.LabelField(new Rect(x, headerRect.y, cw - dragHandleW, headerRect.height),
                         ObjectNames.NicifyVariableName(columnNames[c]), EditorStyles.boldLabel);
-                    // Drag handle area
-                    Rect handleRect = new Rect(x + cw - dragHandleW, headerRect.y, dragHandleW, headerRect.height);
-                    EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
-                    EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
-                    if (ev != null && ev.type == EventType.MouseDown && handleRect.Contains(ev.mousePosition))
+                    // Drag handle — skip for last column
+                    if (c < colCount - 1)
                     {
-                        _draggingTablePath = tableKey;
-                        _draggingColumnIndex = c;
-                        ev.Use();
+                        Rect handleRect = new Rect(x + cw - dragHandleW, headerRect.y, dragHandleW, headerRect.height);
+                        EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
+                        EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
+                        if (ev.GetTypeForControl(dragCtrlId) == EventType.MouseDown && handleRect.Contains(ev.mousePosition))
+                        {
+                            GUIUtility.hotControl = dragCtrlId;
+                            _draggingTablePath = tableKey;
+                            _draggingColumnIndex = c;
+                            ev.Use();
+                        }
                     }
                     x += cw;
                 }
+
+                // Process drag
+                if (GUIUtility.hotControl == dragCtrlId && _draggingTablePath == tableKey)
+                {
+                    int dragIdx = _draggingColumnIndex;
+                    if (ev.GetTypeForControl(dragCtrlId) == EventType.MouseDrag && dragIdx >= 0 && dragIdx < colCount)
+                    {
+                        float delta = ev.delta.x;
+                        float curW = colWidths[dragIdx];
+                        float newWidth = curW + delta;
+                        if (newWidth < 30f) newWidth = 30f;
+                        float actualDelta = newWidth - curW;
+                        if (actualDelta != 0f)
+                        {
+                            colWidths[dragIdx] = newWidth;
+                            int nextIdx = dragIdx + 1;
+                            if (nextIdx < colCount)
+                            {
+                                float nextNew = colWidths[nextIdx] - actualDelta;
+                                if (nextNew < 30f)
+                                {
+                                    actualDelta -= 30f - nextNew;
+                                    nextNew = 30f;
+                                    colWidths[dragIdx] = Mathf.Max(30f, curW + actualDelta);
+                                }
+                                colWidths[nextIdx] = nextNew;
+                            }
+                        }
+                        ev.Use();
+                    }
+                    if (ev.GetTypeForControl(dragCtrlId) == EventType.MouseUp)
+                    {
+                        GUIUtility.hotControl = 0;
+                        _draggingTablePath = null;
+                        _draggingColumnIndex = -1;
+                        ev.Use();
+                    }
+                }
+
                 // Header bottom border
                 EditorGUI.DrawRect(new Rect(headerRect.x, headerRect.yMax - 1, headerRect.width, 1),
                     new Color(0.5f, 0.5f, 0.5f, 0.6f));
@@ -759,6 +798,12 @@ namespace TaoTie.Inspector.Editor
                             if (colIdx < colCount)
                             {
                                 float cw = colWidths[colIdx];
+                                // Last column: fill remaining space (display only)
+                                if (colIdx == colCount - 1)
+                                {
+                                    float rightEdge = rowRect.x + rowRect.width - deleteColW;
+                                    cw = Mathf.Max(30f, rightEdge - x);
+                                }
                                 Rect fieldRect = new Rect(x, rowRect.y, cw - dragHandleW, rowRect.height);
                                 EditorGUI.BeginChangeCheck();
                                 EditorGUI.PropertyField(fieldRect, elIter, GUIContent.none, false);
@@ -773,7 +818,7 @@ namespace TaoTie.Inspector.Editor
                 else
                 {
                     EditorGUI.BeginChangeCheck();
-                    EditorGUI.PropertyField(new Rect(x, rowRect.y, defaultColW, rowRect.height),
+                    EditorGUI.PropertyField(new Rect(x, rowRect.y, 50f, rowRect.height),
                         element, GUIContent.none, false);
                     if (EditorGUI.EndChangeCheck())
                         changed = true;

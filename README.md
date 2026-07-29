@@ -25,7 +25,8 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 | `[PropertyRange(min, max)]` | Slider for numeric fields (supports dynamic bounds via member names) |
 | `[FoldoutGroup("name")]` | Collapsible group |
 | `[BoxGroup("name")]` | Bordered box group (supports nesting via `/` paths) |
-| `[TabGroup("group", "tab")]` | Tabbed group |
+| `[TabGroup("tab")]` | Tabbed group (single tab name — auto-assigned to default group) |
+| `[TabGroup("group", "tab")]` | Tabbed group (explicit group + tab name) |
 | `[HorizontalGroup("name")]` | Horizontal layout group |
 | `[EnumToggleButtons]` | Enum as toggle button row (supports Flags) |
 | `[ValueDropdown("method")]` | Dropdown populated by method (supports `@` expression syntax) |
@@ -36,6 +37,7 @@ Both the standard Unity Inspector and the Graph node editor share the same attri
 | `[Button("name")]` | Draw a button that invokes a method |
 | `[Button("name", ButtonSizes.Large)]` | Button with size (Small/Medium/Large/Gigantic) |
 | `[TableList]` | Render List/Array as a table with column headers, grid lines, and draggable column widths |
+| `[TableMatrix]` | Render 2D array as a matrix table with custom cell drawing, dynamic labels, and resizable columns |
 | `[NotNull]` | Show error if reference is null |
 | `[TypeFilter("method")]` | Filter type selection for `[SerializeReference]` fields |
 | `[HideReferenceObjectPicker]` | Hide Unity's default managed reference picker |
@@ -106,14 +108,57 @@ public class ItemDatabase : SerializedScriptableObject
 
 ### Unified Collection Drawing
 
-All collection types (List, Array, Dictionary, TableList, ValueDropdown arrays) share a unified box+grid visual style:
+All collection types (List, Array, Dictionary, TableList, TableMatrix, ValueDropdown arrays) share a unified box+grid visual style:
 
 - **Box container** with subtle background
 - **Toolbar title bar** with foldout toggle, count label, and `+`/`-` size controls
 - **Grid layout** with alternating row colors, index column, and per-row delete buttons
-- **Draggable column widths** (TableList only) — drag column borders to resize
+- **Draggable column widths** (TableList, TableMatrix) — drag column borders to resize
 - **Performance limiting** — collections with more than 50 items show a "Show All" button instead of rendering everything
 - **Indent-safe layout** — title bar correctly aligns foldout, count, and buttons regardless of nesting depth
+
+### TableMatrix
+
+Renders a 2D array (`T[,]`) as a matrix table with full customization:
+
+```csharp
+[TableMatrix(
+    DrawElementMethod = nameof(DrawCell),
+    Labels = nameof(GetLabel),
+    IsReadOnly = false,
+    HorizontalTitle = "To State",
+    VerticalTitle = "From State"
+)]
+public ConfigFsmTableItem[,] fsmTable = new ConfigFsmTableItem[3, 3];
+
+// Custom cell drawing — signature: (Rect, T) => T
+private ConfigFsmTableItem DrawCell(Rect rect, ConfigFsmTableItem value)
+{
+    if (value == null) value = new ConfigFsmTableItem();
+    value.CanTransition = EditorGUI.Toggle(rect, value.CanTransition);
+    return value;
+}
+
+// Dynamic row/column labels — signature: (T[,], TableAxis, int) => (string, LabelDirection)
+private (string, LabelDirection) GetLabel(ConfigFsmTableItem[,] array, TableAxis axis, int index)
+{
+    return axis switch
+    {
+        TableAxis.Y => (FsmStates[index].Name, LabelDirection.LeftToRight),
+        TableAxis.X => (FsmStates[index].Name, LabelDirection.LeftToRight),
+        _ => (index.ToString(), LabelDirection.LeftToRight),
+    };
+}
+```
+
+Features:
+- **Diagonal corner cell** — `HorizontalTitle` (top-right) and `VerticalTitle` (bottom-left) split by a diagonal line, with text truncation and tooltip on hover
+- **Custom cell drawing** — `DrawElementMethod` receives a `Rect` and the current cell value, returns the new value
+- **Dynamic labels** — `Labels` method provides per-row and per-column labels at runtime
+- **Resizable columns** — drag column borders (including the label column) to adjust widths; widths are cached per matrix instance
+- **Row/column resize** — `R+`/`R-`/`C+`/`C-` buttons to add/remove rows and columns
+- **Read-only mode** — `IsReadOnly = true` disables all editing
+- **Adaptive label width** — Title:Content = 4:6 ratio that adjusts to window size and nesting depth
 
 ### Unified Group System
 
@@ -343,6 +388,52 @@ public class MyGraphWindow : GraphWindow<MyGraph>
     [MenuItem("Tools/My Graph")]
     public static void Open() => GetWindow<MyGraphWindow>().Show();
 }
+```
+
+### TableMatrix
+
+```csharp
+public class FsmConfig : SerializedMonoBehaviour
+{
+    [TableMatrix(
+        DrawElementMethod = nameof(DrawFsmCell),
+        Labels = nameof(GetFsmLabel),
+        HorizontalTitle = "To State",
+        VerticalTitle = "From State"
+    )]
+    public FsmTransition[,] transitions = new FsmTransition[3, 3];
+
+    public List<FsmState> states = new()
+    {
+        new() { Name = "Idle" },
+        new() { Name = "Run" },
+        new() { Name = "Jump" },
+    };
+
+#if UNITY_EDITOR
+    private FsmTransition DrawFsmCell(Rect rect, FsmTransition value)
+    {
+        if (value == null) value = new FsmTransition();
+        value.CanTransition = UnityEditor.EditorGUI.Toggle(rect, value.CanTransition);
+        return value;
+    }
+#endif
+
+    private (string, LabelDirection) GetFsmLabel(FsmTransition[,] array, TableAxis axis, int index)
+    {
+        return axis switch
+        {
+            TableAxis.Y => (states[index].Name, LabelDirection.LeftToRight),
+            TableAxis.X => (states[index].Name, LabelDirection.LeftToRight),
+            _ => (index.ToString(), LabelDirection.LeftToRight),
+        };
+    }
+}
+
+[Serializable]
+public class FsmState { public string Name; }
+[Serializable]
+public class FsmTransition { public bool CanTransition; }
 ```
 
 ## License

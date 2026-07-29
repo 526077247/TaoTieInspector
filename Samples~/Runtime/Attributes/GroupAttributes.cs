@@ -35,6 +35,12 @@ namespace TaoTie.Inspector
         public string GroupName { get; }
         public string TabName { get; }
 
+        public TabGroupAttribute(string tabName)
+        {
+            GroupName = "_DefaultTabGroup";
+            TabName = tabName;
+        }
+
         public TabGroupAttribute(string groupName, string tabName)
         {
             GroupName = groupName;

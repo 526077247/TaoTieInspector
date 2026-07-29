@@ -601,6 +601,71 @@ namespace TaoTie.Inspector
         public NestedNode root = new NestedNode { name = "Root", child = new NestedNode { name = "Child" } };
 
         #endregion
+
+        #region TableMatrix Test
+
+        [Title("FSM Transition Matrix", true)]
+        [TableMatrix(DrawElementMethod = nameof(DrawFsmCell), Labels = nameof(GetFsmLabel), IsReadOnly = false,
+            HorizontalTitle = "To State", VerticalTitle = "From State")]
+        public ConfigFsmTableItem[,] fsmTable = new ConfigFsmTableItem[3, 3];
+
+        [LabelText("FSM States")]
+        [OnValueChanged(nameof(RebuildFsmTable))]
+        public List<FsmState> FsmStates = new List<FsmState>
+        {
+            new FsmState { Name = "Idle" },
+            new FsmState { Name = "Run" },
+            new FsmState { Name = "Jump" },
+        };
+
+        private void RebuildFsmTable()
+        {
+            int n = FsmStates.Count;
+            var newTable = new ConfigFsmTableItem[n, n];
+            if (fsmTable != null)
+            {
+                int oldR = fsmTable.GetLength(0);
+                int oldC = fsmTable.GetLength(1);
+                for (int r = 0; r < n && r < oldR; r++)
+                    for (int c = 0; c < n && c < oldC; c++)
+                        newTable[r, c] = fsmTable[r, c] ?? new ConfigFsmTableItem();
+            }
+            for (int r = 0; r < n; r++)
+                for (int c = 0; c < n; c++)
+                    if (newTable[r, c] == null)
+                        newTable[r, c] = new ConfigFsmTableItem();
+            fsmTable = newTable;
+        }
+
+        private ConfigFsmTableItem DrawFsmCell(Rect rect, ConfigFsmTableItem value)
+        {
+            if (value == null) value = new ConfigFsmTableItem();
+            value.CanTransition = EditorGUI.Toggle(rect, value.CanTransition);
+            return value;
+        }
+
+        private (string, LabelDirection) GetFsmLabel(ConfigFsmTableItem[,] array, TableAxis axis, int index)
+        {
+            switch (axis)
+            {
+                case TableAxis.Y:
+                    for (int i = 0; i < array.GetLength(0); i++)
+                    {
+                        array[i, index].FromState = FsmStates[index].Name;
+                    }
+                    return (FsmStates[index].Name, LabelDirection.LeftToRight);
+                case TableAxis.X:
+                    for (int i = 0; i < array.GetLength(1); i++)
+                    {
+                        array[index, i].ToState = FsmStates[index].Name;
+                    }
+                    return (FsmStates[index].Name, LabelDirection.TopToBottom);
+                default:
+                    return (index.ToString(), LabelDirection.LeftToRight);
+            }
+        }
+
+        #endregion
     }
 
     #region Shared Serializable Classes
@@ -757,6 +822,21 @@ namespace TaoTie.Inspector
 
         [LabelText("Sibling List")]
         public List<NestedNode> siblings = new List<NestedNode>();
+    }
+
+    [Serializable]
+    public class FsmState
+    {
+        [LabelText("Name")]
+        public string Name = "";
+    }
+
+    [Serializable]
+    public class ConfigFsmTableItem
+    {
+        public string FromState;
+        public string ToState;
+        public bool CanTransition;
     }
 
     public static class DropdownHelper

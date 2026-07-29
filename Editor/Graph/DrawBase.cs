@@ -275,18 +275,26 @@ namespace TaoTie.Inspector.Editor
             {
                 OnValueChangedAttribute attribute = null;
                 object value = null;
+                int collectionCount = -1;
                 if (GetCachedAttr<OnValueChangedAttribute>(field) is OnValueChangedAttribute
                     valueChangedAttribute)
                 {
                     value = field.GetValue(obj);
                     attribute = valueChangedAttribute;
+                    // Track collection count for IList fields so mutations (add/remove) trigger callback
+                    if (value is IList list)
+                        collectionCount = list.Count;
                 }
 
                 DrawFieldInspector(field, obj, isDetails);
                 if (attribute != null)
                 {
                     var newValue = field.GetValue(obj);
-                    if (!IsEqual(newValue, value))
+                    bool changed = !IsEqual(newValue, value);
+                    // Also detect collection mutations (same reference, different count)
+                    if (!changed && newValue is IList newList && collectionCount >= 0)
+                        changed = newList.Count != collectionCount;
+                    if (changed)
                     {
                         ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, attribute.MethodName);
                     }
@@ -362,6 +370,14 @@ namespace TaoTie.Inspector.Editor
             if (field.GetCustomAttributes(typeof(TableListAttribute), true).Length > 0)
             {
                 DrawTableListReflection(field, obj, value);
+                return;
+            }
+
+            // TableMatrix: draw 2D array as a matrix
+            if (field.GetCustomAttributes(typeof(TableMatrixAttribute), true).Length > 0
+                && field.FieldType.IsArray && field.FieldType.GetArrayRank() == 2)
+            {
+                DrawTableMatrixReflection(field, obj, value as Array);
                 return;
             }
 
@@ -801,37 +817,13 @@ namespace TaoTie.Inspector.Editor
             float indexColW = 28f;
             float deleteColW = 22f;
             float dragHandleW = 6f;
-            float availableWidth = s_AvailableWidth > 0 ? s_AvailableWidth : EditorGUIUtility.currentViewWidth - 40f;
-            float defaultColW = colCount > 0 ? (availableWidth - indexColW - deleteColW) / colCount : 0f;
-            if (defaultColW < 50f) defaultColW = 50f;
 
-            string tableKey = field.Name + "_" + obj.GetHashCode();
+            string tableKey = "TL3_" + field.Name + "_" + obj.GetHashCode() + "_" + colCount;
 
-            // Get or init column widths
-            float[] colWidths;
-            if (!s_TableColumnWidths.TryGetValue(tableKey, out colWidths) || colWidths.Length != colCount)
-            {
-                colWidths = new float[colCount];
-                for (int i = 0; i < colCount; i++) colWidths[i] = defaultColW;
-                s_TableColumnWidths[tableKey] = colWidths;
-            }
-
-            // Handle column drag
-            var ev = Event.current;
-            if (ev != null && s_DraggingTableKey == tableKey && s_DraggingColumnIndex >= 0 && s_DraggingColumnIndex < colCount)
-            {
-                if (ev.type == EventType.MouseDrag)
-                {
-                    colWidths[s_DraggingColumnIndex] = Mathf.Max(30f, colWidths[s_DraggingColumnIndex] + ev.delta.x);
-                    ev.Use();
-                }
-                if (ev.type == EventType.MouseUp)
-                {
-                    s_DraggingTableKey = null;
-                    s_DraggingColumnIndex = -1;
-                    ev.Use();
-                }
-            }
+            // Get or init column widths — initialization deferred to header drawing where actual width is known
+            float[] colWidths = null;
+            if (s_TableColumnWidths.TryGetValue(tableKey, out var cached) && cached.Length == colCount)
+                colWidths = cached;
 
             // Background box
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
@@ -901,28 +893,93 @@ namespace TaoTie.Inspector.Editor
             {
                 var headerRect = EditorGUILayout.GetControlRect(false, 20f);
                 EditorGUI.DrawRect(headerRect, new Color(0.3f, 0.3f, 0.3f, 0.4f));
+
+                // Initialize column widths from actual headerRect width (equal distribution)
+                // Only cache when headerRect width is valid (skip first layout pass with width=1)
+                if (colWidths == null)
+                {
+                    float contentW = headerRect.width - indexColW - deleteColW;
+                    float eachW = Mathf.Max(50f, contentW / colCount);
+                    colWidths = new float[colCount];
+                    for (int i = 0; i < colCount; i++) colWidths[i] = eachW;
+                    if (headerRect.width > 50f)
+                        s_TableColumnWidths[tableKey] = colWidths;
+                }
+
+                // Use GUIUtility.hotControl for reliable drag tracking
+                int dragCtrlId = GUIUtility.GetControlID(tableKey.GetHashCode(), FocusType.Passive);
+                var ev = Event.current;
+
+                // Render columns and detect drag handle clicks
                 float hx = headerRect.x;
-                // Index column header
                 EditorGUI.LabelField(new Rect(hx, headerRect.y, indexColW, headerRect.height), "#", EditorStyles.boldLabel);
                 hx += indexColW;
-                // Column headers with drag handles
                 for (int c = 0; c < colCount; c++)
                 {
                     float cw = colWidths[c];
+                    if (c == colCount - 1)
+                    {
+                        float rightEdge = headerRect.x + headerRect.width - deleteColW;
+                        cw = Mathf.Max(30f, rightEdge - hx);
+                    }
                     EditorGUI.LabelField(new Rect(hx, headerRect.y, cw - dragHandleW, headerRect.height),
                         ObjectNames.NicifyVariableName(columnNames[c]), EditorStyles.boldLabel);
-                    // Drag handle area
-                    Rect handleRect = new Rect(hx + cw - dragHandleW, headerRect.y, dragHandleW, headerRect.height);
-                    EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
-                    EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
-                    if (ev != null && ev.type == EventType.MouseDown && handleRect.Contains(ev.mousePosition))
+                    // Drag handle — skip for last column
+                    if (c < colCount - 1)
                     {
-                        s_DraggingTableKey = tableKey;
-                        s_DraggingColumnIndex = c;
-                        ev.Use();
+                        Rect handleRect = new Rect(hx + cw - dragHandleW, headerRect.y, dragHandleW, headerRect.height);
+                        EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
+                        EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
+                        // Start drag
+                        if (ev.GetTypeForControl(dragCtrlId) == EventType.MouseDown && handleRect.Contains(ev.mousePosition))
+                        {
+                            GUIUtility.hotControl = dragCtrlId;
+                            s_DraggingTableKey = tableKey;
+                            s_DraggingColumnIndex = c;
+                            ev.Use();
+                        }
                     }
                     hx += cw;
                 }
+
+                // Process drag
+                if (GUIUtility.hotControl == dragCtrlId && s_DraggingTableKey == tableKey)
+                {
+                    int dragIdx = s_DraggingColumnIndex;
+                    if (ev.GetTypeForControl(dragCtrlId) == EventType.MouseDrag && dragIdx >= 0 && dragIdx < colCount)
+                    {
+                        float delta = ev.delta.x;
+                        float curW = colWidths[dragIdx];
+                        float newWidth = curW + delta;
+                        if (newWidth < 30f) newWidth = 30f;
+                        float actualDelta = newWidth - curW;
+                        if (actualDelta != 0f)
+                        {
+                            colWidths[dragIdx] = newWidth;
+                            int nextIdx = dragIdx + 1;
+                            if (nextIdx < colCount)
+                            {
+                                float nextNew = colWidths[nextIdx] - actualDelta;
+                                if (nextNew < 30f)
+                                {
+                                    actualDelta -= 30f - nextNew;
+                                    nextNew = 30f;
+                                    colWidths[dragIdx] = Mathf.Max(30f, curW + actualDelta);
+                                }
+                                colWidths[nextIdx] = nextNew;
+                            }
+                        }
+                        ev.Use();
+                    }
+                    if (ev.GetTypeForControl(dragCtrlId) == EventType.MouseUp)
+                    {
+                        GUIUtility.hotControl = 0;
+                        s_DraggingTableKey = null;
+                        s_DraggingColumnIndex = -1;
+                        ev.Use();
+                    }
+                }
+
                 // Header bottom border
                 EditorGUI.DrawRect(new Rect(headerRect.x, headerRect.yMax - 1, headerRect.width, 1),
                     new Color(0.5f, 0.5f, 0.5f, 0.6f));
@@ -955,7 +1012,7 @@ namespace TaoTie.Inspector.Editor
                         if (itemType != null)
                         {
                             var types = TypeHelper.GetSubClassList(null, itemType, out var names);
-                            int selIdx = EditorGUI.Popup(new Rect(dx, rowRect.y, colWidths.Length > 0 ? colWidths[0] : defaultColW, rowRect.height), -1, names);
+                            int selIdx = EditorGUI.Popup(new Rect(dx, rowRect.y, colWidths.Length > 0 ? colWidths[0] : 50f, rowRect.height), -1, names);
                             if (selIdx >= 0)
                             {
                                 item = Activator.CreateInstance(types[selIdx]);
@@ -968,6 +1025,12 @@ namespace TaoTie.Inspector.Editor
                         for (int c = 0; c < colCount; c++)
                         {
                             float cw = colWidths[c];
+                            // Last column: fill remaining space (display only)
+                            if (c == colCount - 1)
+                            {
+                                float rightEdge = rowRect.x + rowRect.width - deleteColW;
+                                cw = Mathf.Max(30f, rightEdge - dx);
+                            }
                             var f = columnFields[c];
                             var fieldValue = f.GetValue(item);
                             object newVal = fieldValue;
@@ -984,7 +1047,7 @@ namespace TaoTie.Inspector.Editor
                     else
                     {
                         object val = item;
-                        Rect primRect = new Rect(dx, rowRect.y, colWidths.Length > 0 ? colWidths[0] : defaultColW, rowRect.height);
+                        Rect primRect = new Rect(dx, rowRect.y, colWidths.Length > 0 ? colWidths[0] : 50f, rowRect.height);
                         EditorGUI.BeginChangeCheck();
                         DrawNormalFieldRect(itemType, primRect, GUIContent.none, ref val, false, null);
                         if (EditorGUI.EndChangeCheck())
@@ -1048,6 +1111,439 @@ namespace TaoTie.Inspector.Editor
                 ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, collectionChangedAttribute.After);
             }
             return;
+        }
+
+        /// <summary>
+        /// Draw a corner label with word-wrap, ellipsis truncation, and tooltip on hover.
+        /// </summary>
+        private static void DrawCornerLabel(Rect rect, string text, TextAnchor anchor)
+        {
+            var style = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                alignment = anchor,
+                wordWrap = true,
+                clipping = TextClipping.Clip
+            };
+
+            // Check if text fits; if not, truncate and add tooltip
+            var content = new GUIContent(text);
+            var size = style.CalcSize(content);
+            bool fits = size.x <= rect.width || size.y <= rect.height;
+
+            if (fits)
+            {
+                EditorGUI.LabelField(rect, content, style);
+            }
+            else
+            {
+                // Truncate with "..."
+                string truncated = text;
+                var charWidth = style.CalcSize(new GUIContent("M")).x;
+                int maxChars = Mathf.Max(1, Mathf.FloorToInt(rect.width / charWidth) - 1);
+                if (text.Length > maxChars)
+                    truncated = text.Substring(0, maxChars) + "...";
+                EditorGUI.LabelField(rect, new GUIContent(truncated, text), style);
+            }
+
+            // Tooltip on hover
+            if (rect.Contains(Event.current.mousePosition))
+            {
+                GUI.Label(rect, new GUIContent("", text), style);
+                EditorGUIUtility.AddCursorRect(rect, MouseCursor.Arrow);
+            }
+        }
+
+        protected virtual void DrawTableMatrixReflection(FieldInfo field, object obj, Array matrix)
+        {
+            var attr = field.GetCustomAttribute<TableMatrixAttribute>();
+            if (attr == null) return;
+
+            var elementType = field.FieldType.GetElementType();
+            int rows = matrix?.GetLength(0) ?? 0;
+            int cols = matrix?.GetLength(1) ?? 0;
+            bool changed = false;
+
+            // Resolve label method
+            MethodInfo labelsMethod = null;
+            if (!string.IsNullOrEmpty(attr.Labels))
+            {
+                const BindingFlags bf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+                labelsMethod = (field.DeclaringType ?? obj.GetType()).GetMethod(attr.Labels, bf);
+            }
+
+            // Resolve custom draw method
+            MethodInfo drawMethod = null;
+            if (!string.IsNullOrEmpty(attr.DrawElementMethod))
+            {
+                const BindingFlags bf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+                drawMethod = (field.DeclaringType ?? obj.GetType()).GetMethod(attr.DrawElementMethod, bf);
+            }
+
+            var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };
+            float indentOffset = 15f * EditorGUI.indentLevel;
+            int oldIndent = EditorGUI.indentLevel;
+            EditorGUI.indentLevel = 0;
+            EditorGUILayout.BeginHorizontal();
+            if (indentOffset > 0) GUILayout.Space(indentOffset);
+            EditorGUILayout.BeginVertical(boxStyle);
+
+            // Title bar with +/- for rows and cols
+            string foldKey = "TaoTie_Fold_TM_" + field.Name + "_" + obj.GetHashCode();
+            bool foldout = SessionState.GetBool(foldKey, true);
+            Rect titleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            EditorGUI.DrawRect(titleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
+            float tx = titleRect.x + 4f;
+            float colMinusX = titleRect.xMax - 24f - 2f;
+            float colPlusX = colMinusX - 24f - 2f;
+            float rowMinusX = colPlusX - 24f - 2f;
+            float rowPlusX = rowMinusX - 24f - 2f;
+            string sizeText = $"{rows}×{cols}";
+            var sizeContent = new GUIContent(sizeText);
+            float sizeW = EditorStyles.miniLabel.CalcSize(sizeContent).x + 8f;
+            Rect sizeRect = new Rect(rowPlusX - sizeW - 4f, titleRect.y, sizeW, titleRect.height);
+            Rect foldRect = new Rect(tx, titleRect.y, sizeRect.x - tx - 4f, titleRect.height);
+            string title = GetShowName(field)?.text ?? ObjectNames.NicifyVariableName(field.Name);
+            foldout = EditorGUI.Foldout(foldRect, foldout, title, true);
+            SessionState.SetBool(foldKey, foldout);
+            EditorGUI.LabelField(sizeRect, sizeContent, EditorStyles.miniLabel);
+
+            if (!attr.IsReadOnly)
+            {
+                if (GUI.Button(new Rect(rowPlusX, titleRect.y, 24f, titleRect.height), "R+", EditorStyles.toolbarButton))
+                {
+                    var nm = Array.CreateInstance(elementType, rows + 1, cols);
+                    if (matrix != null)
+                        for (int r = 0; r < rows; r++)
+                            for (int c = 0; c < cols; c++)
+                                nm.SetValue(matrix.GetValue(r, c), r, c);
+                    field.SetValue(obj, nm);
+                    matrix = nm;
+                    rows++;
+                    changed = true;
+                }
+                if (GUI.Button(new Rect(rowMinusX, titleRect.y, 24f, titleRect.height), "R−", EditorStyles.toolbarButton))
+                {
+                    if (rows > 0)
+                    {
+                        var nm = Array.CreateInstance(elementType, rows - 1, cols);
+                        for (int r = 0; r < rows - 1; r++)
+                            for (int c = 0; c < cols; c++)
+                                nm.SetValue(matrix.GetValue(r, c), r, c);
+                        field.SetValue(obj, nm);
+                        matrix = nm;
+                        rows--;
+                        changed = true;
+                    }
+                }
+                if (GUI.Button(new Rect(colPlusX, titleRect.y, 24f, titleRect.height), "C+", EditorStyles.toolbarButton))
+                {
+                    var nm = Array.CreateInstance(elementType, rows, cols + 1);
+                    for (int r = 0; r < rows; r++)
+                        for (int c = 0; c < cols; c++)
+                            nm.SetValue(matrix.GetValue(r, c), r, c);
+                    field.SetValue(obj, nm);
+                    matrix = nm;
+                    cols++;
+                    changed = true;
+                }
+                if (GUI.Button(new Rect(colMinusX, titleRect.y, 24f, titleRect.height), "C−", EditorStyles.toolbarButton))
+                {
+                    if (cols > 0)
+                    {
+                        var nm = Array.CreateInstance(elementType, rows, cols - 1);
+                        for (int r = 0; r < rows; r++)
+                            for (int c = 0; c < cols - 1; c++)
+                                nm.SetValue(matrix.GetValue(r, c), r, c);
+                        field.SetValue(obj, nm);
+                        matrix = nm;
+                        cols--;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (foldout && rows > 0 && cols > 0)
+            {
+                float labelColW = 80f;
+
+                // Pre-fetch labels
+                var colLabels = new string[cols];
+                var rowLabels = new string[rows];
+                for (int c = 0; c < cols; c++)
+                {
+                    colLabels[c] = c.ToString();
+                    if (labelsMethod != null)
+                    {
+                        try
+                        {
+                            var result = labelsMethod.Invoke(labelsMethod.IsStatic ? null : obj, new object[] { matrix, TableAxis.X, c });
+                            if (result is ValueTuple<string, LabelDirection> vt)
+                                colLabels[c] = vt.Item1;
+                        }
+                        catch { }
+                    }
+                }
+                for (int r = 0; r < rows; r++)
+                {
+                    rowLabels[r] = r.ToString();
+                    if (labelsMethod != null)
+                    {
+                        try
+                        {
+                            var result = labelsMethod.Invoke(labelsMethod.IsStatic ? null : obj, new object[] { matrix, TableAxis.Y, r });
+                            if (result is ValueTuple<string, LabelDirection> vt)
+                                rowLabels[r] = vt.Item1;
+                        }
+                        catch { }
+                    }
+                }
+
+                // Use a probe rect to get the actual content width inside the box
+                float actualWidth = EditorGUILayout.GetControlRect(false, 0f).width;
+                bool hasVerticalTitle = !string.IsNullOrEmpty(attr.VerticalTitle);
+                bool hasHorizontalTitle = !string.IsNullOrEmpty(attr.HorizontalTitle);
+
+                // Per-matrix column widths — index 0 = label column, index 1..cols = data columns
+                int totalCols = cols + 1; // +1 for label column
+                string matrixKey = "TM3_" + field.Name + "_" + obj.GetHashCode() + "_" + totalCols;
+                if (!s_TableColumnWidths.TryGetValue(matrixKey, out var matrixColWidths) || matrixColWidths.Length != totalCols)
+                {
+                    matrixColWidths = null; // will be initialized after headerRect is obtained
+                }
+                float labelColWidth = matrixColWidths?[0] ?? 80f;
+
+                float cellH = EditorGUIUtility.singleLineHeight + 2f;
+                float headerH = EditorGUIUtility.singleLineHeight + 6f;
+                float dragHandleW = 4f;
+
+                // Column header row — diagonal corner cell + column labels
+                {
+                    var headerRect = EditorGUILayout.GetControlRect(false, headerH);
+                    EditorGUI.DrawRect(headerRect, new Color(0.3f, 0.3f, 0.3f, 0.3f));
+
+                    // Initialize column widths from actual headerRect width (equal distribution)
+                    // Skip caching if headerRect width is invalid (can happen during first layout pass)
+                    if (matrixColWidths == null)
+                    {
+                        float eachW = headerRect.width / totalCols;
+                        if (eachW < 30f) eachW = 30f; // clamp but don't cache invalid values
+                        if (headerRect.width > 50f) // only cache when width is valid
+                        {
+                            matrixColWidths = new float[totalCols];
+                            for (int i = 0; i < totalCols; i++) matrixColWidths[i] = eachW;
+                            s_TableColumnWidths[matrixKey] = matrixColWidths;
+                            labelColWidth = matrixColWidths[0];
+                        }
+                        else if (matrixColWidths == null)
+                        {
+                            // Fallback: use a temporary array without caching
+                            matrixColWidths = new float[totalCols];
+                            for (int i = 0; i < totalCols; i++) matrixColWidths[i] = eachW;
+                            labelColWidth = matrixColWidths[0];
+                        }
+                    }
+
+                    // Use GUIUtility.hotControl for reliable drag tracking
+                    int dragCtrlId = GUIUtility.GetControlID(matrixKey.GetHashCode(), FocusType.Passive);
+                    var dragEv = Event.current;
+
+                    // Diagonal corner cell: HorizontalTitle top-right, VerticalTitle bottom-left, diagonal line
+                    Rect cornerRect = new Rect(headerRect.x, headerRect.y, labelColWidth, headerH);
+                    if (hasHorizontalTitle || hasVerticalTitle)
+                    {
+                        // Draw diagonal line from top-left to bottom-right
+                        EditorGUI.DrawRect(new Rect(cornerRect.x, cornerRect.y, cornerRect.width, 1), new Color(0.5f, 0.5f, 0.5f, 0.6f));
+                        EditorGUI.DrawRect(new Rect(cornerRect.x, cornerRect.yMax - 1, cornerRect.width, 1), new Color(0.5f, 0.5f, 0.5f, 0.6f));
+                        Handles.BeginGUI();
+                        Handles.color = new Color(0.5f, 0.5f, 0.8f);
+                        Handles.DrawLine(
+                            new Vector3(cornerRect.x, cornerRect.y),
+                            new Vector3(cornerRect.xMax, cornerRect.yMax));
+                        Handles.EndGUI();
+
+                        float halfW = cornerRect.width * 0.5f;
+
+                        if (hasHorizontalTitle)
+                        {
+                            Rect trRect = new Rect(cornerRect.x + halfW, cornerRect.y, halfW, cornerRect.height);
+                            DrawCornerLabel(trRect, attr.HorizontalTitle, TextAnchor.UpperRight);
+                        }
+                        if (hasVerticalTitle)
+                        {
+                            Rect blRect = new Rect(cornerRect.x, cornerRect.y, halfW, cornerRect.height);
+                            DrawCornerLabel(blRect, attr.VerticalTitle, TextAnchor.LowerLeft);
+                        }
+                    }
+
+                    // Label column drag handle
+                    {
+                        Rect handleRect = new Rect(headerRect.x + labelColWidth - dragHandleW * 0.5f, headerRect.y, dragHandleW, headerH);
+                        EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
+                        EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
+                        if (dragEv.GetTypeForControl(dragCtrlId) == EventType.MouseDown && handleRect.Contains(dragEv.mousePosition))
+                        {
+                            GUIUtility.hotControl = dragCtrlId;
+                            s_DraggingTableKey = matrixKey;
+                            s_DraggingColumnIndex = -1;
+                            dragEv.Use();
+                        }
+                    }
+
+                    // Column labels with drag handles
+                    float colX = headerRect.x + labelColWidth;
+                    for (int c = 0; c < cols; c++)
+                    {
+                        float cw = matrixColWidths[c + 1];
+                        // Last column: fill remaining space from prev column right edge to headerRect right edge (display only)
+                        if (c == cols - 1)
+                        {
+                            float rightEdge = headerRect.x + headerRect.width;
+                            cw = Mathf.Max(30f, rightEdge - colX);
+                        }
+                        Rect cellRect = new Rect(colX, headerRect.y, cw, headerH);
+                        var label = colLabels[c];
+                        var colStyle = new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip };
+                        EditorGUI.LabelField(cellRect, new GUIContent(label), colStyle);
+
+                        // Drag handle between data columns
+                        if (c < cols - 1)
+                        {
+                            Rect handleRect = new Rect(colX + cw - dragHandleW * 0.5f, headerRect.y, dragHandleW, headerH);
+                            EditorGUI.DrawRect(handleRect, new Color(0.5f, 0.5f, 0.5f, 0.3f));
+                            EditorGUIUtility.AddCursorRect(handleRect, MouseCursor.ResizeHorizontal);
+                            if (dragEv.GetTypeForControl(dragCtrlId) == EventType.MouseDown && handleRect.Contains(dragEv.mousePosition))
+                            {
+                                GUIUtility.hotControl = dragCtrlId;
+                                s_DraggingTableKey = matrixKey;
+                                s_DraggingColumnIndex = c;
+                                dragEv.Use();
+                            }
+                        }
+                        colX += cw;
+                    }
+
+                    // Process drag
+                    if (GUIUtility.hotControl == dragCtrlId && s_DraggingTableKey == matrixKey)
+                    {
+                        int dragArrIdx = s_DraggingColumnIndex + 1;
+                        if (dragEv.GetTypeForControl(dragCtrlId) == EventType.MouseDrag && dragArrIdx >= 0 && dragArrIdx < totalCols)
+                        {
+                            float delta = dragEv.delta.x;
+                            float curW = matrixColWidths[dragArrIdx];
+                            float newWidth = curW + delta;
+                            // Clamp to minimum
+                            if (newWidth < 30f) newWidth = 30f;
+                            float actualDelta = newWidth - curW;
+                            // Only apply if there's actual change
+                            if (actualDelta != 0f)
+                            {
+                                matrixColWidths[dragArrIdx] = newWidth;
+                                int nextIdx = dragArrIdx + 1;
+                                if (nextIdx < totalCols)
+                                {
+                                    float nextNew = matrixColWidths[nextIdx] - actualDelta;
+                                    if (nextNew < 30f)
+                                    {
+                                        actualDelta -= 30f - nextNew;
+                                        nextNew = 30f;
+                                        matrixColWidths[dragArrIdx] = Mathf.Max(30f, curW + actualDelta);
+                                    }
+                                    matrixColWidths[nextIdx] = nextNew;
+                                }
+                            }
+                            dragEv.Use();
+                        }
+                        if (dragEv.GetTypeForControl(dragCtrlId) == EventType.MouseUp)
+                        {
+                            GUIUtility.hotControl = 0;
+                            s_DraggingTableKey = null;
+                            s_DraggingColumnIndex = -1;
+                            dragEv.Use();
+                        }
+                    }
+
+                    EditorGUI.DrawRect(new Rect(headerRect.x, headerRect.yMax - 1, headerRect.width, 1), new Color(0.5f, 0.5f, 0.5f, 0.6f));
+                }
+
+                // Track start Y and X of data rows for vertical title
+                float dataStartY = 0f;
+                float dataStartX = 0f;
+                float dataTotalH = rows * cellH;
+
+                // Data rows
+                for (int r = 0; r < rows; r++)
+                {
+                    var rowRect = EditorGUILayout.GetControlRect(false, cellH);
+                    if (r == 0) { dataStartY = rowRect.y; dataStartX = rowRect.x; }
+                    if (r % 2 == 1)
+                        EditorGUI.DrawRect(rowRect, new Color(0.5f, 0.5f, 0.5f, 0.1f));
+
+                    // Row label — always horizontal
+                    var rowLabel = rowLabels[r];
+                    var rowLabelRect = new Rect(rowRect.x, rowRect.y, labelColWidth, rowRect.height);
+                    EditorGUI.LabelField(rowLabelRect, new GUIContent(rowLabel), EditorStyles.boldLabel);
+
+                    // Cells
+                    float cellX = rowRect.x + labelColWidth;
+                    for (int c = 0; c < cols; c++)
+                    {
+                        float cw = matrixColWidths[c + 1];
+                        // Last column: fill remaining space (display only)
+                        if (c == cols - 1)
+                        {
+                            float rightEdge = rowRect.x + rowRect.width;
+                            cw = Mathf.Max(30f, rightEdge - cellX);
+                        }
+                        Rect cellRect = new Rect(cellX, rowRect.y, cw, cellH);
+                        object cellVal = matrix.GetValue(r, c);
+
+                        if (attr.IsReadOnly)
+                            EditorGUI.BeginDisabledGroup(true);
+
+                        if (drawMethod != null)
+                        {
+                            try
+                            {
+                                var result = drawMethod.Invoke(drawMethod.IsStatic ? null : obj, new object[] { cellRect, cellVal });
+                                if (!IsEqual(result, cellVal))
+                                {
+                                    matrix.SetValue(result, r, c);
+                                    changed = true;
+                                }
+                            }
+                            catch { }
+                        }
+                        else
+                        {
+                            object newVal = cellVal;
+                            DrawNormalFieldRect(elementType, cellRect, GUIContent.none, ref newVal, false, field);
+                            if (!IsEqual(newVal, cellVal))
+                            {
+                                matrix.SetValue(newVal, r, c);
+                                changed = true;
+                            }
+                        }
+
+                        if (attr.IsReadOnly)
+                            EditorGUI.EndDisabledGroup();
+                        cellX += cw;
+                    }
+
+                    EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.yMax - 1, rowRect.width, 1), new Color(0.3f, 0.3f, 0.3f, 0.3f));
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.indentLevel = oldIndent;
+            EditorGUILayout.Space(2);
+
+            if (changed &&
+                field.GetCustomAttribute(typeof(OnCollectionChangedAttribute)) is OnCollectionChangedAttribute
+                    collectionChangedAttribute)
+            {
+                ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, collectionChangedAttribute.After);
+            }
         }
 
         protected virtual void DrawFieldArrayInspector(FieldInfo field, object obj, Array list, bool isDetails = false)
