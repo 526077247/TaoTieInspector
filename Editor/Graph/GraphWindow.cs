@@ -9,7 +9,7 @@ namespace TaoTie.Inspector.Editor
 {
     public abstract partial class GraphWindow  : EditorWindow  
     {
-        protected DrawBase drawBase = new DrawBase();
+        protected DrawBase drawBase;
         protected GraphBase m_Graph;
         private GraphMode m_Mode = GraphMode.None;
         private float m_Timer;
@@ -199,8 +199,13 @@ namespace TaoTie.Inspector.Editor
 
         private Dictionary<string, NodeView> nodeViews => m_NodeViews;
 
+        /// <summary>Factory for the DrawBase used by this window's graph inspector.
+        /// Override to return a custom DrawBase subclass (e.g. Odin-compatible drawing).</summary>
+        protected virtual DrawBase CreateDrawBase() => new DrawBase();
+
         protected virtual void OnEnable()
         {
+            drawBase = CreateDrawBase();
             m_AltKeyPressedAnimBool = new AnimBool(false, Repaint);
             m_NodeViews = new Dictionary<string, NodeView>();
             AddButton(new GUIContent("New"), InitGraph);

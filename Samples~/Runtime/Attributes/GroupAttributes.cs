@@ -6,7 +6,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class FoldoutGroupAttribute : PropertyAttribute
     {
-        public string GroupName { get; }
+        public string GroupName { get; set; }
         public bool Expanded { get; set; }
 
         public FoldoutGroupAttribute(string groupName)
@@ -19,7 +19,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class BoxGroupAttribute : PropertyAttribute
     {
-        public string GroupName { get; }
+        public string GroupName { get; set; }
         public bool ShowLabel { get; set; }
 
         public BoxGroupAttribute(string groupName)
@@ -32,8 +32,8 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class TabGroupAttribute : PropertyAttribute
     {
-        public string GroupName { get; }
-        public string TabName { get; }
+        public string GroupName { get; set; }
+        public string TabName { get; set; }
 
         public TabGroupAttribute(string tabName)
         {
@@ -51,7 +51,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class HorizontalGroupAttribute : PropertyAttribute
     {
-        public string GroupName { get; }
+        public string GroupName { get; set; }
         public float LabelWidth { get; set; }
         public float MarginLeft { get; set; }
         public float MarginRight { get; set; }

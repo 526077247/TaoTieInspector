@@ -298,7 +298,7 @@ namespace TaoTie.Inspector.Editor
 
         private static void DrawInfoBox(InfoBoxAttribute infoBox)
         {
-            MessageType msgType = infoBox.MessageType switch
+            MessageType msgType = infoBox.InfoMessageType switch
             {
                 InfoMessageType.Info => MessageType.Info,
                 InfoMessageType.Warning => MessageType.Warning,

@@ -903,7 +903,8 @@ namespace TaoTie.Inspector.Editor
             {
                 graphScrollPos = EditorGUILayout.BeginScrollView(graphScrollPos, GUILayout.Height(showNodeView?200:inspectorArea.height-20));
                 // Set actual content width after entering ScrollView (accounts for vertical scrollbar)
-                DrawBase.SetAvailableWidth(GUILayoutUtility.GetRect(0, 0).width);
+                float contentW = GUILayoutUtility.GetRect(0, 0).width;
+                DrawBase.SetAvailableWidth(contentW > 0 ? contentW : width - 20f);
                 DrawGraphInspector();
                 EditorGUILayout.EndScrollView();
             }
@@ -912,7 +913,8 @@ namespace TaoTie.Inspector.Editor
             {
                 nodeScrollPos = EditorGUILayout.BeginScrollView(nodeScrollPos, GUILayout.Height(inspectorArea.height-(foldGraph?225:25)));
                 // Set actual content width after entering ScrollView (accounts for vertical scrollbar)
-                DrawBase.SetAvailableWidth(GUILayoutUtility.GetRect(0, 0).width);
+                float nodeContentW = GUILayoutUtility.GetRect(0, 0).width;
+                DrawBase.SetAvailableWidth(nodeContentW > 0 ? nodeContentW : width - 20f);
                 for (int i = 0; i < m_SelectedNodes.Count; i++)
                 {
                     var node = m_SelectedNodes[i];

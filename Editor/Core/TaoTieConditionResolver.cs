@@ -75,38 +75,38 @@ namespace TaoTie.Inspector.Editor
 
         public static bool EvaluateShowIf(ShowIfAttribute attr, object target)
         {
-            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Member))
-                return TaoTieExpressionEvaluator.Evaluate(attr.Member, target);
+            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Condition))
+                return TaoTieExpressionEvaluator.Evaluate(attr.Condition, target);
             if (attr.Value != null)
-                return EvaluateEquals(target, attr.Member, attr.Value);
-            return Evaluate(target, attr.Member);
+                return EvaluateEquals(target, attr.Condition, attr.Value);
+            return Evaluate(target, attr.Condition);
         }
 
         public static bool EvaluateHideIf(HideIfAttribute attr, object target)
         {
-            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Member))
-                return TaoTieExpressionEvaluator.Evaluate(attr.Member, target);
+            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Condition))
+                return TaoTieExpressionEvaluator.Evaluate(attr.Condition, target);
             if (attr.Value != null)
-                return EvaluateEquals(target, attr.Member, attr.Value);
-            return Evaluate(target, attr.Member);
+                return EvaluateEquals(target, attr.Condition, attr.Value);
+            return Evaluate(target, attr.Condition);
         }
 
         public static bool EvaluateEnableIf(EnableIfAttribute attr, object target)
         {
-            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Member))
-                return TaoTieExpressionEvaluator.Evaluate(attr.Member, target);
+            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Condition))
+                return TaoTieExpressionEvaluator.Evaluate(attr.Condition, target);
             if (attr.Value != null)
-                return EvaluateEquals(target, attr.Member, attr.Value);
-            return Evaluate(target, attr.Member);
+                return EvaluateEquals(target, attr.Condition, attr.Value);
+            return Evaluate(target, attr.Condition);
         }
 
         public static bool EvaluateDisableIf(DisableIfAttribute attr, object target)
         {
-            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Member))
-                return TaoTieExpressionEvaluator.Evaluate(attr.Member, target);
+            if (attr.Value == null && TaoTieExpressionEvaluator.IsExpression(attr.Condition))
+                return TaoTieExpressionEvaluator.Evaluate(attr.Condition, target);
             if (attr.Value != null)
-                return EvaluateEquals(target, attr.Member, attr.Value);
-            return Evaluate(target, attr.Member);
+                return EvaluateEquals(target, attr.Condition, attr.Value);
+            return Evaluate(target, attr.Condition);
         }
 
         private static bool ToBool(object value)

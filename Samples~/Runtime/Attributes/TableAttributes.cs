@@ -44,7 +44,7 @@ namespace TaoTie.Inspector
         public bool DrawScrollView = true;
         public bool IsReadOnly;
         public bool Transpose;
-        public bool SquareRows;
+        public bool SquareCells;
 
         /// <summary>
         /// Method name for custom cell drawing. Signature: (Rect, T) => T

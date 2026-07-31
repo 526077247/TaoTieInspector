@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace TaoTie.Inspector.Editor
 {
-    public class NodeView : DrawBase
+    public class NodeView
     {
         #region Private Variables
 
@@ -21,6 +21,8 @@ namespace TaoTie.Inspector.Editor
         public bool zoomedBeyondPortDrawThreshold = false;
         public bool isSelected;
         public bool isInGroup;
+
+        protected DrawBase drawBase;
 
         // Cached styles (procedural, no external GUISkin)
         private static GUIStyle s_NodeTitle;
@@ -91,7 +93,12 @@ namespace TaoTie.Inspector.Editor
             m_Graph = graph;
             m_graphWindow = graphWindow;
             m_Node.onDeletePort += OnDeletePort;
+            drawBase = CreateDrawBase();
         }
+
+        /// <summary>Factory for the DrawBase used by this node view's inspector.
+        /// Override to return a custom DrawBase subclass (e.g. Odin-compatible drawing).</summary>
+        protected virtual DrawBase CreateDrawBase() => new DrawBase();
 
         public virtual void OnDoubleClick(EditorWindow window) { }
         public virtual void OnUnFocus(EditorWindow window) { GUI.FocusControl(null); }
@@ -189,9 +196,12 @@ namespace TaoTie.Inspector.Editor
             m_Offset = panOffset;
             m_graphArea = graphArea;
             Vector2 windowToGridPosition = m_Node.GetPosition() + m_Offset / zoomLevel;
-            // Use a very large height so the window never clips content.
-            // The graph area's scroll rect handles the actual clipping.
-            var clientRect = new Rect(windowToGridPosition, new Vector2(width, Mathf.Max(height, 5000)));
+            // Use actual node height for the GUI.Window rect.
+            // A previous 5000px fallback caused massive window overlap in z-order,
+            // stealing mouse events from nodes drawn underneath.
+            // If content grows (foldout expands), UpdateNodeHeight updates the
+            // stored height and the next frame uses the correct size.
+            var clientRect = new Rect(windowToGridPosition, new Vector2(width, Mathf.Max(height, 50)));
             GUI.Window(m_WindowId, clientRect, DrawNode, string.Empty, GUIStyle.none);
 
             // Add resize cursor in screen space (outside GUI.Window clip)
@@ -209,7 +219,7 @@ namespace TaoTie.Inspector.Editor
 
         public virtual void DrawInspector(bool isDetails = false)
         {
-            DrawObjectInspector(node, isDetails);
+            drawBase.DrawObjectInspector(node, isDetails);
         }
 
         #endregion
@@ -370,6 +380,8 @@ namespace TaoTie.Inspector.Editor
                     s_ResizingNodeId = m_Node.GetInstanceID();
                     s_IsResizingWidth = true;
                     ev.Use();
+                    // Request Repaint so the resize cursor and handle update immediately
+                    m_graphWindow.Repaint();
                 }
                 // Draw subtle handle
                 NodeColors.DrawRect(new Rect(width - 2, 0, 2, dynamicHeight),
@@ -580,6 +592,30 @@ namespace TaoTie.Inspector.Editor
                 GUI.color = new Color(0.75f, 0.85f, 1.0f, 1f);
             OnNodeGUI();
             GUI.color = color;
+
+            // Handle resize drag inside GUI.Window — events are captured here after MouseDown.
+            // GUI.Window only routes events when mouse is inside the window rect.
+            // When mouse leaves the rect (fast drag), HandleMouseLeftClicks handles the fallback.
+            if (s_IsResizingWidth && s_ResizingNodeId == m_Node.GetInstanceID())
+            {
+                var ev = Event.current;
+                if (ev != null && ev.type == EventType.MouseDrag && ev.button == 0)
+                {
+                    // Inside GUI.Window, the matrix is already scaled by zoom,
+                    // so ev.delta.x is in screen-space pixels — divide by zoom
+                    // to get grid-space delta.
+                    float zoom = m_Graph.currentZoom;
+                    float newWidth = m_Node.GetWidth() + ev.delta.x / zoom;
+                    m_Node.SetWidth(Mathf.Max(BaseWidth, newWidth));
+                    m_graphWindow.Repaint();
+                    ev.Use();
+                }
+                else if (ev != null && ev.type == EventType.MouseUp && ev.button == 0)
+                {
+                    EndResize();
+                    ev.Use();
+                }
+            }
         }
 
         private void OnDeletePort(Port port)

@@ -1051,6 +1051,40 @@ namespace TaoTie.Inspector.Editor
             Event current = Event.current;
             if (!current.isMouse) return;
             if (current.button != 0) return;
+
+            // Fallback resize handling — when mouse leaves the GUI.Window rect during fast drag,
+            // MouseDrag/MouseUp events arrive here instead of DrawNode.
+            if (NodeView.s_IsResizingWidth)
+            {
+                if (current.type == EventType.MouseDrag)
+                {
+                    foreach (var n in m_Graph.values)
+                    {
+                        if (n.GetInstanceID() == NodeView.s_ResizingNodeId)
+                        {
+                            float newWidth = n.GetWidth() + current.delta.x / currentZoom;
+                            n.SetWidth(Mathf.Max(NodeView.BaseWidth, newWidth));
+                            m_PointsDirty = true;
+                            m_Dirty = true;
+                            break;
+                        }
+                    }
+                    current.Use();
+                    return;
+                }
+                if (current.type == EventType.MouseUp)
+                {
+                    NodeView.EndResize();
+                    m_Points = null;
+                    m_Ports = null;
+                    m_EdgeViews = null;
+                    m_PointsDirty = true;
+                    m_Dirty = true;
+                    current.Use();
+                    return;
+                }
+            }
+
             if (current.type == EventType.MouseDown)
             {
                 //left mouse button is down and the space key is down as well -> enter panning mode
@@ -1118,6 +1152,11 @@ namespace TaoTie.Inspector.Editor
                 }
 
                 //pressed left mouse button over a node -> check to see if it's inside the header (if no node is currently selected) or it just over a node (if at least 2 nodes are selected)
+                // Re-check node at click position — DrawNodes() may have updated node heights
+                // since HandleMouseHover() ran, so m_CurrentHoveredNode may be stale.
+                if (m_CurrentHoveredNode == null)
+                    m_CurrentHoveredNode = GetNodeAtWorldPosition(Event.current.mousePosition);
+
                 if (m_CurrentHoveredNode != null)
                 {
                     if (GetNodeGridRect(m_CurrentHoveredNode)
@@ -1163,25 +1202,6 @@ namespace TaoTie.Inspector.Editor
 
             if (current.type == EventType.MouseDrag)
             {
-                // Handle node resize drag first — takes priority over node move
-                if (NodeView.s_IsResizingWidth && NodeView.s_ResizingNodeId >= 0)
-                {
-                    foreach (var n in m_Graph.values)
-                    {
-                        if (n.GetInstanceID() == NodeView.s_ResizingNodeId)
-                        {
-                            float newWidth = n.GetWidth() + current.delta.x / currentZoom;
-                            n.SetWidth(Mathf.Max(NodeView.BaseWidth, newWidth));
-                            // Force rebuild of port positions and edge connections
-                            m_PointsDirty = true;
-                            m_Dirty = true;
-                            break;
-                        }
-                    }
-                    current.Use();
-                    return;
-                }
-
                 //left mouse click is dragging and the graph is in panning mode
                 if (m_Mode == GraphMode.Pan)
                 {
@@ -1285,20 +1305,6 @@ namespace TaoTie.Inspector.Editor
                     m_InitialDragNodePositions.Clear();
                     m_DraggingGroup = null;
                     m_Mode = GraphMode.None;
-                    current.Use();
-                    return;
-                }
-
-                // End node resize on mouse up
-                if (NodeView.s_IsResizingWidth)
-                {
-                    NodeView.EndResize();
-                    // Force rebuild of port positions and edge connections
-                    m_Points = null;
-                    m_Ports = null;
-                    m_EdgeViews = null;
-                    m_PointsDirty = true;
-                    m_Dirty = true;
                     current.Use();
                     return;
                 }

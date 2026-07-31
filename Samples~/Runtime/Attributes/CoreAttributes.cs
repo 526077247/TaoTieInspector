@@ -6,7 +6,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class LabelTextAttribute : PropertyAttribute
     {
-        public string Text { get; }
+        public string Text { get; set; }
 
         public LabelTextAttribute(string text)
         {
@@ -17,20 +17,20 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = true)]
     public class ShowIfAttribute : PropertyAttribute
     {
-        public string Member { get; }
-        public object Value { get; }
-        public ConditionOperator Operator { get; }
+        public string Condition { get; set; }
+        public object Value { get; set; }
+        public ConditionOperator Operator { get; set; }
 
-        public ShowIfAttribute(string member)
+        public ShowIfAttribute(string condition)
         {
-            Member = member;
+            Condition = condition;
             Value = null;
             Operator = ConditionOperator.And;
         }
 
-        public ShowIfAttribute(string member, object value)
+        public ShowIfAttribute(string condition, object value)
         {
-            Member = member;
+            Condition = condition;
             Value = value;
             Operator = ConditionOperator.And;
         }
@@ -39,20 +39,20 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = true)]
     public class HideIfAttribute : PropertyAttribute
     {
-        public string Member { get; }
-        public object Value { get; }
-        public ConditionOperator Operator { get; }
+        public string Condition { get; set; }
+        public object Value { get; set; }
+        public ConditionOperator Operator { get; set; }
 
-        public HideIfAttribute(string member)
+        public HideIfAttribute(string condition)
         {
-            Member = member;
+            Condition = condition;
             Value = null;
             Operator = ConditionOperator.And;
         }
 
-        public HideIfAttribute(string member, object value)
+        public HideIfAttribute(string condition, object value)
         {
-            Member = member;
+            Condition = condition;
             Value = value;
             Operator = ConditionOperator.And;
         }
@@ -61,20 +61,20 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = true)]
     public class EnableIfAttribute : PropertyAttribute
     {
-        public string Member { get; }
-        public object Value { get; }
-        public ConditionOperator Operator { get; }
+        public string Condition { get; set; }
+        public object Value { get; set; }
+        public ConditionOperator Operator { get; set; }
 
-        public EnableIfAttribute(string member)
+        public EnableIfAttribute(string condition)
         {
-            Member = member;
+            Condition = condition;
             Value = null;
             Operator = ConditionOperator.And;
         }
 
-        public EnableIfAttribute(string member, object value)
+        public EnableIfAttribute(string condition, object value)
         {
-            Member = member;
+            Condition = condition;
             Value = value;
             Operator = ConditionOperator.And;
         }
@@ -83,20 +83,20 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = true)]
     public class DisableIfAttribute : PropertyAttribute
     {
-        public string Member { get; }
-        public object Value { get; }
-        public ConditionOperator Operator { get; }
+        public string Condition { get; set; }
+        public object Value { get; set; }
+        public ConditionOperator Operator { get; set; }
 
-        public DisableIfAttribute(string member)
+        public DisableIfAttribute(string condition)
         {
-            Member = member;
+            Condition = condition;
             Value = null;
             Operator = ConditionOperator.And;
         }
 
-        public DisableIfAttribute(string member, object value)
+        public DisableIfAttribute(string condition, object value)
         {
-            Member = member;
+            Condition = condition;
             Value = value;
             Operator = ConditionOperator.And;
         }
@@ -110,7 +110,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class PropertyOrderAttribute : PropertyAttribute
     {
-        public int Order { get; }
+        public int Order { get; set; }
 
         public PropertyOrderAttribute(int order)
         {

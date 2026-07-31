@@ -11,7 +11,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class ValueDropdownAttribute : PropertyAttribute
     {
-        public string MemberName { get; }
+        public string MemberName { get; set; }
         public bool AppendNextDrawer { get; set; }
 
         public ValueDropdownAttribute(string memberName)
@@ -24,7 +24,7 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = true)]
     public class OnValueChangedAttribute : PropertyAttribute
     {
-        public string MethodName { get; }
+        public string MethodName { get; set; }
 
         public OnValueChangedAttribute(string methodName)
         {
@@ -35,8 +35,8 @@ namespace TaoTie.Inspector
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = true)]
     public class ButtonAttribute : PropertyAttribute
     {
-        public string Name { get; }
-        public ButtonSizes Size { get; }
+        public string Name { get; set; }
+        public ButtonSizes Size { get; set; }
 
         public ButtonAttribute(string name = null, ButtonSizes size = ButtonSizes.Medium)
         {

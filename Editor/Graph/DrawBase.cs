@@ -17,14 +17,14 @@ namespace TaoTie.Inspector.Editor
             Array,
             IList
         }
-        private static List<ISort> sortTemp = new();
-        private static Dictionary<string, GroupItem> groupsTemp = new();
-        private static List<string> tabGroupKeys = new();
+        private List<ISort> sortTemp = new();
+        private Dictionary<string, GroupItem> groupsTemp = new();
+        private List<string> tabGroupKeys = new();
 
         // Per-table column widths — key: field name + object hash, value: column widths
-        private static readonly Dictionary<string, float[]> s_TableColumnWidths = new();
-        private static string s_DraggingTableKey;
-        private static int s_DraggingColumnIndex = -1;
+        private readonly Dictionary<string, float[]> s_TableColumnWidths = new();
+        private string s_DraggingTableKey;
+        private int s_DraggingColumnIndex = -1;
 
         private static Type stringType = typeof(string);
         private static Type listType = typeof(List<>);
@@ -35,7 +35,7 @@ namespace TaoTie.Inspector.Editor
         private static Dictionary<MemberInfo, Attribute[]> memberAttrCache = new();
 
         /// <summary>Actual available width for layout (set by DrawObjectInspector from GUILayout context)</summary>
-        protected static float s_AvailableWidth = 0f;
+        public static float s_AvailableWidth = 0f;
 
         /// <summary>Set the actual available width for box+grid layout calculations.</summary>
         public static void SetAvailableWidth(float width)
@@ -47,7 +47,7 @@ namespace TaoTie.Inspector.Editor
         {
             if (!memberAttrCache.TryGetValue(member, out var attrs))
             {
-                attrs = (Attribute[])member.GetCustomAttributes(typeof(Attribute), true);
+                attrs = BuildAttributeCache(member);
                 memberAttrCache[member] = attrs;
             }
             for (int i = 0; i < attrs.Length; i++)
@@ -57,7 +57,37 @@ namespace TaoTie.Inspector.Editor
             return null;
         }
 
-        protected static HashSet<FieldInfo> foldoutState = new();
+        /// <summary>
+        /// Build the attribute array for a member, merging native attributes
+        /// with Odin-wrapped equivalents (when Odin is installed).
+        /// </summary>
+        private static Attribute[] BuildAttributeCache(MemberInfo member)
+        {
+            var native = (Attribute[])member.GetCustomAttributes(typeof(Attribute), true);
+            var odin = OdinCompat.WrapOdinAttributes(member);
+            if (odin == null || odin.Length == 0) return native;
+
+            // Skip Odin-wrapped attributes whose TaoTie type already exists natively
+            var existing = new HashSet<Type>();
+            for (int i = 0; i < native.Length; i++)
+                existing.Add(native[i].GetType());
+
+            var additional = new List<Attribute>();
+            for (int i = 0; i < odin.Length; i++)
+            {
+                if (!existing.Contains(odin[i].GetType()))
+                    additional.Add(odin[i]);
+            }
+
+            if (additional.Count == 0) return native;
+
+            var result = new Attribute[native.Length + additional.Count];
+            Array.Copy(native, result, native.Length);
+            additional.CopyTo(result, native.Length);
+            return result;
+        }
+
+        protected HashSet<FieldInfo> foldoutState = new();
         protected HashSet<GroupItem> foldoutState2 = new();
         protected HashSet<string> drawnTabGroups = new();
 
@@ -65,15 +95,15 @@ namespace TaoTie.Inspector.Editor
         protected static float s_FoldoutXOffset = 14f;
         public static void SetFoldoutXOffset(float offset) => s_FoldoutXOffset = offset;
 
-        private static Dictionary<FieldInfo, HashSet<int>> listFoldoutState = new();
-        private static Dictionary<FieldInfo, object> dicInputKey = new();
+        private Dictionary<FieldInfo, HashSet<int>> listFoldoutState = new();
+        private Dictionary<FieldInfo, object> dicInputKey = new();
         private static Dictionary<Type, string[]> enumDropDown = new();
 
-        protected static Dictionary<FieldInfo, ValueDropdownItem[]> valueDropdown = new();
+        protected Dictionary<FieldInfo, ValueDropdownItem[]> valueDropdown = new();
 
-        protected static List<ValueDropdownItem> temp = new();
-        private static List<Type> temp2 = new();
-        private static List<string> temp3 = new();
+        protected List<ValueDropdownItem> temp = new();
+        private List<Type> temp2 = new();
+        private List<string> temp3 = new();
 
         // Performance: max rows to render before requiring "Show All" expansion
         protected const int k_MaxVisibleRows = 50;
@@ -91,9 +121,9 @@ namespace TaoTie.Inspector.Editor
 
             // s_AvailableWidth should be set by the caller (e.g. GraphWindowDraw.DrawInspector)
             // via SetAvailableWidth before calling DrawObjectInspector.
-            // If not set, fall back to currentViewWidth.
+            // If not set, fall back to a conservative default to avoid over-wide labels.
             if (s_AvailableWidth <= 0)
-                s_AvailableWidth = EditorGUIUtility.currentViewWidth - 40f;
+                s_AvailableWidth = Mathf.Min(EditorGUIUtility.currentViewWidth - 40f, 380f);
 
             // Set adaptive label width: Title:Content = 4:6 with minimum
             SetAdaptiveLabelWidth();
@@ -247,7 +277,7 @@ namespace TaoTie.Inspector.Editor
                 var enableIfs = member.GetCustomAttributes<EnableIfAttribute>(true);
                 foreach (var enableIfAttr in enableIfs)
                 {
-                    bool enabled = CheckCondition(member, obj, new[] { enableIfAttr.Member }, enableIfAttr.Value);
+                    bool enabled = CheckCondition(member, obj, new[] { enableIfAttr.Condition }, enableIfAttr.Value);
                     if (!enabled)
                     {
                         disable = true;
@@ -260,7 +290,7 @@ namespace TaoTie.Inspector.Editor
                     var disableIfs = member.GetCustomAttributes<DisableIfAttribute>(true);
                     foreach (var disableIfAttr in disableIfs)
                     {
-                        bool disabled = CheckCondition(member, obj, new[] { disableIfAttr.Member }, disableIfAttr.Value);
+                        bool disabled = CheckCondition(member, obj, new[] { disableIfAttr.Condition }, disableIfAttr.Value);
                         if (disabled)
                         {
                             disable = true;
@@ -343,13 +373,13 @@ namespace TaoTie.Inspector.Editor
             var showIfs = member.GetCustomAttributes<ShowIfAttribute>(true);
             foreach (var showIfAttribute in showIfs)
             {
-                if (!CheckCondition(member, obj, new[] { showIfAttribute.Member }, showIfAttribute.Value)) return false;
+                if (!CheckCondition(member, obj, new[] { showIfAttribute.Condition }, showIfAttribute.Value)) return false;
             }
 
             var hideIfs = member.GetCustomAttributes<HideIfAttribute>(true);
             foreach (var hideIfAttribute in hideIfs)
             {
-                if (CheckCondition(member, obj, new[] { hideIfAttribute.Member }, hideIfAttribute.Value)) return false;
+                if (CheckCondition(member, obj, new[] { hideIfAttribute.Condition }, hideIfAttribute.Value)) return false;
             }
             return true;
         }
@@ -517,7 +547,15 @@ namespace TaoTie.Inspector.Editor
                 {
                     setNullClicked = GUI.Button(buttonRect, "SetNull");
                 }
-                foldout = EditorGUI.Foldout(actualFoldRect, foldout, foldoutLabel, true);
+                // Truncate foldout label if it would overlap the type label or SetNull button
+                float maxFoldLabelW = actualFoldRect.width - 15f;
+                string truncatedFoldText = TruncateLabel(foldoutLabel.text, maxFoldLabelW);
+                foldout = EditorGUI.Foldout(actualFoldRect, foldout, truncatedFoldText, true);
+                // Truncate type display name if it would overlap the SetNull button
+                if (typeRect.width > 0)
+                {
+                    typeDisplayName = TruncateLabel(typeDisplayName, typeRect.width);
+                }
                 EditorGUI.LabelField(typeRect, typeDisplayName, EditorStyles.boldLabel);
 
                 if (setNullClicked)
@@ -1202,8 +1240,9 @@ namespace TaoTie.Inspector.Editor
             float sizeW = EditorStyles.miniLabel.CalcSize(sizeContent).x + 8f;
             Rect sizeRect = new Rect(rowPlusX - sizeW - 4f, titleRect.y, sizeW, titleRect.height);
             Rect foldRect = new Rect(tx, titleRect.y, sizeRect.x - tx - 4f, titleRect.height);
-            string title = GetShowName(field)?.text ?? ObjectNames.NicifyVariableName(field.Name);
-            foldout = EditorGUI.Foldout(foldRect, foldout, title, true);
+            var tmShowName = GetShowName(field);
+            string title = tmShowName?.text ?? ObjectNames.NicifyVariableName(field.Name);
+            foldout = EditorGUI.Foldout(foldRect, foldout, new GUIContent(title, tmShowName?.tooltip), true);
             SessionState.SetBool(foldKey, foldout);
             EditorGUI.LabelField(sizeRect, sizeContent, EditorStyles.miniLabel);
 
@@ -1581,6 +1620,7 @@ namespace TaoTie.Inspector.Editor
             int len = list.Count;
             var showName = GetShowName(field);
             string title = showName?.text ?? ObjectNames.NicifyVariableName(field.Name);
+            string tooltip = showName?.tooltip;
             float indexColW = 28f;
             float deleteColW = 22f;
             float setNullColW = 50f;
@@ -1610,7 +1650,7 @@ namespace TaoTie.Inspector.Editor
             Rect countRect = new Rect(plusX - countW - 4f, titleBarRect.y, countW, titleBarRect.height);
             // Foldout fills space between tbX and count label
             Rect foldRect = new Rect(tbX, titleBarRect.y, countRect.x - tbX - 4f, titleBarRect.height);
-            foldout = EditorGUI.Foldout(foldRect, foldout, new GUIContent(title), true);
+            foldout = EditorGUI.Foldout(foldRect, foldout, new GUIContent(title, tooltip), true);
             SessionState.SetBool(foldKey, foldout);
             EditorGUI.LabelField(countRect, countContent, EditorStyles.miniLabel);
             if (GUI.Button(new Rect(plusX, titleBarRect.y, 24f, titleBarRect.height), "+", EditorStyles.toolbarButton))
@@ -1706,7 +1746,7 @@ namespace TaoTie.Inspector.Editor
                         // Reference type — foldout + SetNull + field
                         if (item == null)
                         {
-                            Rect popRect = new Rect(x, rowRect.y, fieldColW, rowRect.height);
+                            Rect popRect = new Rect(x, rowRect.y, contentW, rowRect.height);
                             var types = GetSubClassList(field, obj, itemType, out var names);
                             int selIdx = EditorGUI.Popup(popRect, -1, names);
                             if (selIdx >= 0)
@@ -1723,9 +1763,14 @@ namespace TaoTie.Inspector.Editor
                                 listFoldoutState[field] = foldSet;
                             }
                             bool subFoldState = foldSet.Contains(i);
-                            Rect subFoldRect = new Rect(x, rowRect.y, fieldColW - setNullColW - 2f, rowRect.height);
-                            subFold = EditorGUI.Foldout(subFoldRect, subFoldState, GetShowName(item.GetType()));
-                            Rect snRect = new Rect(x + fieldColW - setNullColW - 2f, rowRect.y, setNullColW, rowRect.height);
+                            // SetNull button anchored just before the delete button
+                            Rect snRect = new Rect(delRect.x - setNullColW - 2f, rowRect.y, setNullColW, rowRect.height);
+                            // Foldout fills the space between index and SetNull
+                            Rect subFoldRect = new Rect(x, rowRect.y, snRect.x - x - 2f, rowRect.height);
+                            string foldLabel = GetShowName(item.GetType()).text;
+                            // Truncate label to fit foldout rect (account for foldout arrow ~13px)
+                            foldLabel = TruncateLabel(foldLabel, subFoldRect.width - 15f);
+                            subFold = EditorGUI.Foldout(subFoldRect, subFoldState, foldLabel);
                             if (GUI.Button(snRect, "SetNull"))
                             {
                                 list[i] = null;
@@ -1908,9 +1953,11 @@ namespace TaoTie.Inspector.Editor
             bool dicFoldout = SessionState.GetBool(dicFoldKey, false);
             Rect dicTitleRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             EditorGUI.DrawRect(dicTitleRect, new Color(0.3f, 0.3f, 0.3f, 0.2f));
-            string dicTitle = (GetShowName(field)?.text ?? ObjectNames.NicifyVariableName(field.Name)) + $" ({dictionary.Count})";
+            var dicShowName = GetShowName(field);
+            string dicTitle = (dicShowName?.text ?? ObjectNames.NicifyVariableName(field.Name)) + $" ({dictionary.Count})";
+            string dicTooltip = dicShowName?.tooltip;
             dicFoldout = EditorGUI.Foldout(new Rect(dicTitleRect.x + s_FoldoutXOffset, dicTitleRect.y, dicTitleRect.width - s_FoldoutXOffset - 4f, dicTitleRect.height),
-                dicFoldout, new GUIContent(dicTitle), true);
+                dicFoldout, new GUIContent(dicTitle, dicTooltip), true);
             SessionState.SetBool(dicFoldKey, dicFoldout);
 
             if (dicFoldout)
@@ -2421,6 +2468,7 @@ namespace TaoTie.Inspector.Editor
             int len = list.Count;
             var showName = GetShowName(field);
             string title = showName?.text ?? ObjectNames.NicifyVariableName(field.Name);
+            string vdTooltip = showName?.tooltip;
             float indexColW = 28f;
             float deleteColW = 22f;
 
@@ -2445,7 +2493,7 @@ namespace TaoTie.Inspector.Editor
             Rect vdFoldRect = new Rect(vdTbX, vdTitleRect.y, vdCountRect.x - vdTbX - 4f, vdTitleRect.height);
             string vdFoldKey = "TaoTie_Fold_VD_" + field.Name + "_" + obj.GetHashCode();
             bool vdFoldout = SessionState.GetBool(vdFoldKey, false);
-            vdFoldout = EditorGUI.Foldout(vdFoldRect, vdFoldout, title, true);
+            vdFoldout = EditorGUI.Foldout(vdFoldRect, vdFoldout, new GUIContent(title, vdTooltip), true);
             SessionState.SetBool(vdFoldKey, vdFoldout);
             EditorGUI.LabelField(vdCountRect, vdCountContent, EditorStyles.miniLabel);
             if (GUI.Button(new Rect(vdPlusX, vdTitleRect.y, 24f, vdTitleRect.height), "+", EditorStyles.toolbarButton))
@@ -2660,7 +2708,8 @@ namespace TaoTie.Inspector.Editor
             string showname = GetCachedAttr<LabelTextAttribute>(member) is LabelTextAttribute labelTextAttr
                 ? labelTextAttr.Text
                 : ObjectNames.NicifyVariableName(member.Name);
-            if (!string.IsNullOrEmpty(tip))
+            // Prefix * to indicate tooltip presence, but only if the label doesn't already start with *
+            if (!string.IsNullOrEmpty(tip) && (showname.Length == 0 || showname[0] != '*'))
                 showname = "*" + showname;
             return GetCachedGUIContent(showname, tip ?? showname);
         }
@@ -2694,6 +2743,30 @@ namespace TaoTie.Inspector.Editor
             }
 
             return new GUIContent(showname, tip ?? showname);
+        }
+
+        /// <summary>
+        /// Truncates a label string with ellipsis if it exceeds the given pixel width.
+        /// </summary>
+        private static string TruncateLabel(string label, float maxWidth)
+        {
+            if (string.IsNullOrEmpty(label) || maxWidth <= 0) return label;
+            var content = new GUIContent(label);
+            float fullW = EditorStyles.label.CalcSize(content).x;
+            if (fullW <= maxWidth) return label;
+            const string ellipsis = "…";
+            float ellipsisW = EditorStyles.label.CalcSize(new GUIContent(ellipsis)).x;
+            if (maxWidth <= ellipsisW) return ellipsis;
+            // Binary search for max chars that fit
+            int lo = 0, hi = label.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                float w = EditorStyles.label.CalcSize(new GUIContent(label.Substring(0, mid) + ellipsis)).x;
+                if (w <= maxWidth) lo = mid;
+                else hi = mid - 1;
+            }
+            return lo > 0 ? label.Substring(0, lo) + ellipsis : ellipsis;
         }
 
         protected virtual List<Type> GetSubClassList(FieldInfo fieldInfo, object obj, Type type, out string[] names)
@@ -3025,37 +3098,21 @@ namespace TaoTie.Inspector.Editor
                         temp.Clear();
                         foreach (var item in data)
                         {
-                            if (item is ValueDropdownItem vdi)
+                            // Handles TaoTie's ValueDropdownItem, IValueDropdownItem,
+                            // ValueDropdownItem<T>, and Odin's equivalent types by name
+                            if (OdinCompat.TryConvertToValueDropdownItem(item, out var converted))
                             {
-                                temp.Add(vdi);
+                                temp.Add(converted);
                             }
-                            else if (item is IValueDropdownItem valueDropdownItem)
+                            else if (item is Type typ &&
+                                typ.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute
+                                    labelTextAttribute)
                             {
-                                temp.Add(new ValueDropdownItem(valueDropdownItem.GetText(), valueDropdownItem.GetValue()));
+                                temp.Add(new ValueDropdownItem(labelTextAttribute.Text, item));
                             }
                             else
                             {
-                                // Handle ValueDropdownItem<T> via reflection
-                                var itemType = item?.GetType();
-                                if (itemType != null && itemType.IsGenericType &&
-                                    itemType.GetGenericTypeDefinition() == typeof(ValueDropdownItem<>))
-                                {
-                                    var textField = itemType.GetField("Text");
-                                    var valueField = itemType.GetField("Value");
-                                    temp.Add(new ValueDropdownItem(
-                                        textField?.GetValue(item)?.ToString() ?? "",
-                                        valueField?.GetValue(item)));
-                                }
-                                else if (item is Type typ &&
-                                    typ.GetCustomAttribute(typeof(LabelTextAttribute)) is LabelTextAttribute
-                                        labelTextAttribute)
-                                {
-                                    temp.Add(new ValueDropdownItem(labelTextAttribute.Text, item));
-                                }
-                                else
-                                {
-                                    temp.Add(new ValueDropdownItem(item?.ToString() ?? "null", item));
-                                }
+                                temp.Add(new ValueDropdownItem(item?.ToString() ?? "null", item));
                             }
                         }
 
