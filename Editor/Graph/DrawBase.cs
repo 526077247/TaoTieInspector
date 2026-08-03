@@ -87,7 +87,7 @@ namespace TaoTie.Inspector.Editor
             return result;
         }
 
-        protected HashSet<FieldInfo> foldoutState = new();
+        protected HashSet<(FieldInfo, int)> foldoutState = new();
         protected HashSet<GroupItem> foldoutState2 = new();
         protected HashSet<string> drawnTabGroups = new();
 
@@ -95,7 +95,7 @@ namespace TaoTie.Inspector.Editor
         protected static float s_FoldoutXOffset = 14f;
         public static void SetFoldoutXOffset(float offset) => s_FoldoutXOffset = offset;
 
-        private Dictionary<FieldInfo, HashSet<int>> listFoldoutState = new();
+        private Dictionary<(FieldInfo, int), HashSet<int>> listFoldoutState = new();
         private Dictionary<FieldInfo, object> dicInputKey = new();
         private static Dictionary<Type, string[]> enumDropDown = new();
 
@@ -529,7 +529,7 @@ namespace TaoTie.Inspector.Editor
                 string typeDisplayName = LabelResolver.GetTypeLabel(valueType);
 
                 // Use instance field for foldout state — DrawBase is reused across frames via DrawReflectionProperty
-                bool foldout = foldoutState.Contains(field);
+                bool foldout = foldoutState.Contains((field, value?.GetHashCode() ?? 0));
                 var foldoutLabel = GetShowName(field, value);
                 float labelW = EditorStyles.foldout.CalcSize(foldoutLabel).x + 18f;
 
@@ -568,11 +568,11 @@ namespace TaoTie.Inspector.Editor
                     EditorGUI.indentLevel++;
                     DrawObjectInspector(value, isDetails);
                     EditorGUI.indentLevel--;
-                    foldoutState.Add(field);
+                    foldoutState.Add((field, value?.GetHashCode() ?? 0));
                 }
                 else
                 {
-                    foldoutState.Remove(field);
+                    foldoutState.Remove((field, value?.GetHashCode() ?? 0));
                 }
 
                 return;
@@ -1757,10 +1757,10 @@ namespace TaoTie.Inspector.Editor
                         }
                         else
                         {
-                            if (!listFoldoutState.TryGetValue(field, out var foldSet))
+                            if (!listFoldoutState.TryGetValue((field, obj.GetHashCode()), out var foldSet))
                             {
                                 foldSet = new HashSet<int>();
-                                listFoldoutState[field] = foldSet;
+                                listFoldoutState[(field, obj.GetHashCode())] = foldSet;
                             }
                             bool subFoldState = foldSet.Contains(i);
                             // SetNull button anchored just before the delete button
@@ -2053,13 +2053,13 @@ namespace TaoTie.Inspector.Editor
                 // Complex object — show foldout below
                 if (item != null && !itemType.IsValueType && itemType != stringType)
                 {
-                    bool subFoldout = listFoldoutState.TryGetValue(field, out var foldSet) && foldSet.Contains(rowIdx * 2 + 1);
+                    bool subFoldout = listFoldoutState.TryGetValue((field, obj.GetHashCode()), out var foldSet) && foldSet.Contains(rowIdx * 2 + 1);
                     var foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
                     subFoldout = EditorGUI.Foldout(foldRect, subFoldout, "  └ " + item.GetType().Name + " Details");
-                    if (!listFoldoutState.TryGetValue(field, out foldSet))
+                    if (!listFoldoutState.TryGetValue((field, obj.GetHashCode()), out foldSet))
                     {
                         foldSet = new HashSet<int>();
-                        listFoldoutState[field] = foldSet;
+                        listFoldoutState[(field, obj.GetHashCode())] = foldSet;
                     }
                     if (subFoldout)
                     {
@@ -2823,6 +2823,42 @@ namespace TaoTie.Inspector.Editor
             if (member is FieldInfo fi && (member.DeclaringType?.GetEvent(member.Name,
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly) != null
                 || member.Name.StartsWith("add_") || member.Name.StartsWith("remove_")))
+            {
+                return false;
+            }
+            // Skip private fields unless they have [SerializeField] or a TaoTie attribute
+            if (member is FieldInfo pf && !pf.IsPublic
+                && !pf.IsDefined(typeof(SerializeField), true)
+                && !pf.IsDefined(typeof(LabelTextAttribute), true)
+                && !pf.IsDefined(typeof(ButtonAttribute), true)
+                && !pf.IsDefined(typeof(ShowIfAttribute), true)
+                && !pf.IsDefined(typeof(HideIfAttribute), true)
+                && !pf.IsDefined(typeof(EnableIfAttribute), true)
+                && !pf.IsDefined(typeof(DisableIfAttribute), true)
+                && !pf.IsDefined(typeof(ReadOnlyAttribute), true)
+                && !pf.IsDefined(typeof(PropertyOrderAttribute), true)
+                && !pf.IsDefined(typeof(OnValueChangedAttribute), true)
+                && !pf.IsDefined(typeof(OnCollectionChangedAttribute), true)
+                && !pf.IsDefined(typeof(TableListAttribute), true)
+                && !pf.IsDefined(typeof(ValueDropdownAttribute), true)
+                && !pf.IsDefined(typeof(TypeFilterAttribute), true)
+                && !pf.IsDefined(typeof(HideReferenceObjectPickerAttribute), true)
+                && !pf.IsDefined(typeof(FoldoutGroupAttribute), true)
+                && !pf.IsDefined(typeof(BoxGroupAttribute), true)
+                && !pf.IsDefined(typeof(TabGroupAttribute), true)
+                && !pf.IsDefined(typeof(OnStateUpdateAttribute), true)
+                && !pf.IsDefined(typeof(InfoBoxAttribute), true)
+                && !pf.IsDefined(typeof(TitleAttribute), true)
+                && !pf.IsDefined(typeof(PropertySpaceAttribute), true)
+                && !pf.IsDefined(typeof(PropertyRangeAttribute), true)
+                && !pf.IsDefined(typeof(DisableInEditorModeAttribute), true)
+                && !pf.IsDefined(typeof(MinValueAttribute), true)
+                && !pf.IsDefined(typeof(MaxValueAttribute), true)
+                && !pf.IsDefined(typeof(NotNullAttribute), true)
+                && !pf.IsDefined(typeof(DrawIgnoreAttribute), true)
+                && !pf.IsDefined(typeof(TableMatrixAttribute), true)
+                && !pf.IsDefined(typeof(EnumToggleButtonsAttribute), true)
+                && !pf.IsDefined(typeof(NotAssetsAttribute), true))
             {
                 return false;
             }
