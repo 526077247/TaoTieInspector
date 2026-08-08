@@ -1110,16 +1110,19 @@ namespace TaoTie.Inspector.Editor
                         EditorGUILayout.BeginHorizontal();
                         EditorGUILayout.LabelField(i.ToString(), GUILayout.Width(indexColW));
                         bool newElemExpanded = EditorGUILayout.Foldout(elemExpanded, element.displayName, true);
+                        bool elemDeleted = false;
                         if (GUILayout.Button("×", GUILayout.Width(deleteColW)))
                         {
                             prop.DeleteArrayElementAtIndex(i);
                             changed = true;
+                            elemDeleted = true;
                         }
                         EditorGUILayout.EndHorizontal();
 
-                        element.isExpanded = newElemExpanded;
+                        if (!elemDeleted)
+                            element.isExpanded = newElemExpanded;
 
-                        if (element.isExpanded)
+                        if (!elemDeleted && element.isExpanded)
                         {
                             EditorGUI.indentLevel += 3;
                             var childProp = element.Copy();
