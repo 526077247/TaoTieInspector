@@ -33,6 +33,7 @@ namespace TaoTie.Inspector.Editor
 
         private static Dictionary<Type, ISort[]> sortsMap = new();
         private static Dictionary<MemberInfo, Attribute[]> memberAttrCache = new();
+        private static Dictionary<(FieldInfo, int), object> onValueChangedTracker = new();
 
         /// <summary>Actual available width for layout (set by DrawObjectInspector from GUILayout context)</summary>
         public static float s_AvailableWidth = 0f;
@@ -314,6 +315,19 @@ namespace TaoTie.Inspector.Editor
                     // Track collection count for IList fields so mutations (add/remove) trigger callback
                     if (value is IList list)
                         collectionCount = list.Count;
+                    // Detect async changes from previous frame (e.g. ValueDropdown menu callback)
+                    var trackerKey = (field, obj.GetHashCode());
+                    if (onValueChangedTracker.TryGetValue(trackerKey, out var prevValue))
+                    {
+                        onValueChangedTracker.Remove(trackerKey);
+                        if (!IsEqual(value, prevValue))
+                        {
+                            // Value changed since last frame by an async callback
+                            ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, attribute.MethodName);
+                            // Update value so the post-draw check doesn't re-trigger
+                            value = field.GetValue(obj);
+                        }
+                    }
                 }
 
                 DrawFieldInspector(field, obj, isDetails);
@@ -328,6 +342,9 @@ namespace TaoTie.Inspector.Editor
                     {
                         ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, attribute.MethodName);
                     }
+                    // For async callbacks (e.g. ValueDropdown menu), store the value so we can
+                    // detect the change on the next frame when the menu callback fires.
+                    onValueChangedTracker[(field, obj.GetHashCode())] = newValue;
                 }
 
             }
@@ -1543,7 +1560,12 @@ namespace TaoTie.Inspector.Editor
                         {
                             try
                             {
+                                // End disabled group temporarily so DrawCell can receive mouse events
+                                if (attr.IsReadOnly)
+                                    EditorGUI.EndDisabledGroup();
                                 var result = drawMethod.Invoke(drawMethod.IsStatic ? null : obj, new object[] { cellRect, cellVal });
+                                if (attr.IsReadOnly)
+                                    EditorGUI.BeginDisabledGroup(true);
                                 if (!IsEqual(result, cellVal))
                                 {
                                     matrix.SetValue(result, r, c);
@@ -2088,23 +2110,52 @@ namespace TaoTie.Inspector.Editor
             float addKeyW = Mathf.Min(colW, (addBtnRect.x - addRect.x) * 0.5f);
             float addValW = addBtnRect.x - addRect.x - addKeyW - 2f;
             object inputKey;
-            if (keyType.IsValueType || keyType == stringType)
+            if (keyType == stringType)
             {
                 if (!dicInputKey.TryGetValue(field, out inputKey))
                 {
-                    inputKey = keyType == stringType ? "" : Activator.CreateInstance(keyType);
+                    inputKey = "";
                     dicInputKey.Add(field, inputKey);
                 }
                 var newKey = inputKey;
                 Rect keyInputRect = new Rect(addRect.x, addRect.y, addKeyW, addRect.height);
-                if (keyType == typeof(string))
-                    newKey = EditorGUI.TextField(keyInputRect, (string)newKey);
-                else if (keyType == typeof(int))
-                    newKey = EditorGUI.IntField(keyInputRect, (int)newKey);
-                else if (keyType == typeof(float))
-                    newKey = EditorGUI.FloatField(keyInputRect, (float)newKey);
-                else
-                    newKey = EditorGUI.TextField(keyInputRect, newKey?.ToString() ?? "");
+                newKey = EditorGUI.TextField(keyInputRect, (string)newKey);
+                inputKey = newKey;
+            }
+            else if (keyType.IsEnum)
+            {
+                if (!dicInputKey.TryGetValue(field, out inputKey))
+                {
+                    inputKey = Activator.CreateInstance(keyType);
+                    dicInputKey.Add(field, inputKey);
+                }
+                var newKey = inputKey;
+                Rect keyInputRect = new Rect(addRect.x, addRect.y, addKeyW, addRect.height);
+                newKey = EditorGUI.EnumPopup(keyInputRect, (System.Enum)newKey);
+                inputKey = newKey;
+            }
+            else if (keyType == typeof(int))
+            {
+                if (!dicInputKey.TryGetValue(field, out inputKey))
+                {
+                    inputKey = 0;
+                    dicInputKey.Add(field, inputKey);
+                }
+                var newKey = inputKey;
+                Rect keyInputRect = new Rect(addRect.x, addRect.y, addKeyW, addRect.height);
+                newKey = EditorGUI.IntField(keyInputRect, (int)newKey);
+                inputKey = newKey;
+            }
+            else if (keyType == typeof(float))
+            {
+                if (!dicInputKey.TryGetValue(field, out inputKey))
+                {
+                    inputKey = 0f;
+                    dicInputKey.Add(field, inputKey);
+                }
+                var newKey = inputKey;
+                Rect keyInputRect = new Rect(addRect.x, addRect.y, addKeyW, addRect.height);
+                newKey = EditorGUI.FloatField(keyInputRect, (float)newKey);
                 inputKey = newKey;
             }
             else
