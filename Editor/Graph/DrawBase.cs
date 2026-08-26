@@ -190,7 +190,7 @@ namespace TaoTie.Inspector.Editor
 
         private static GroupEntryData MemberItemToGroupData(MemberItem mi, bool isDetails)
         {
-            var data = new GroupEntryData { UserData = mi.Member };
+            var data = new GroupEntryData { UserData = mi.Member, SortOrder = mi.MinSort };
             if (mi.cachedAttributes == null) return data;
 
             string boxGroup = null, foldoutGroup = null, tabGroup = null, tabName = null, horizGroup = null;
@@ -3377,17 +3377,32 @@ namespace TaoTie.Inspector.Editor
 
         private int SortAb(ISort a, ISort b)
         {
-            if (a.MinSort == b.MinSort)
+            if (a.MinSort != b.MinSort)
             {
-                if (a is MemberItem ma && b is MemberItem mb)
-                {
-                    return ma.Member.MemberType - mb.Member.MemberType;
-                }
-
-                return 0;
+                return a.MinSort - b.MinSort > 0 ? 1 : -1;
             }
 
-            return a.MinSort - b.MinSort > 0 ? 1 : -1;
+            // Same Order: stable sort by declaration order (MetadataToken).
+            // Group items use their first member's token as the representative,
+            // so the comparison is total and never returns 0 for distinct items.
+            int ta = GetRepresentativeToken(a);
+            int tb = GetRepresentativeToken(b);
+            return ta.CompareTo(tb);
+        }
+
+        private static int GetRepresentativeToken(ISort item)
+        {
+            if (item is MemberItem mi)
+            {
+                return mi.Member.MetadataToken;
+            }
+
+            if (item is GroupItem gi && gi.Members.Count > 0)
+            {
+                return gi.Members[0].Member.MetadataToken;
+            }
+
+            return 0;
         }
 
         #endregion

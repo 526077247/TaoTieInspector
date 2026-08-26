@@ -42,6 +42,10 @@ namespace TaoTie.Inspector.Editor
             public bool IsFoldoutGroup;
             public bool IsTabGroup;
             public string TabName;
+            // Sort weight for interleaving grouped/ungrouped entries.
+            // For a group node: minimum SortOrder of its direct entries.
+            // For the root: unused.
+            public float SortOrder = float.PositiveInfinity;
         }
 
         private GroupNode BuildGroupTree(List<GroupEntryData> entries)
@@ -79,6 +83,7 @@ namespace TaoTie.Inspector.Editor
                         containerNode.Parent = root;
                     }
                     nodeMap[path].DirectEntries.Add(entry);
+                    if (entry.SortOrder < nodeMap[path].SortOrder) nodeMap[path].SortOrder = entry.SortOrder;
                     continue;
                 }
 
@@ -102,6 +107,7 @@ namespace TaoTie.Inspector.Editor
                 {
                     // Add to container node as a direct entry
                     nodeMap[containerParent].DirectEntries.Add(entry);
+                    if (entry.SortOrder < nodeMap[containerParent].SortOrder) nodeMap[containerParent].SortOrder = entry.SortOrder;
                 }
                 else
                 {
@@ -109,6 +115,7 @@ namespace TaoTie.Inspector.Editor
                     if (string.IsNullOrEmpty(groupPath))
                     {
                         root.DirectEntries.Add(entry);
+                        if (entry.SortOrder < root.SortOrder) root.SortOrder = entry.SortOrder;
                     }
                     else
                     {
@@ -146,6 +153,7 @@ namespace TaoTie.Inspector.Editor
                 parentNode = node;
             }
             parentNode.DirectEntries.Add(entry);
+            if (entry.SortOrder < parentNode.SortOrder) parentNode.SortOrder = entry.SortOrder;
         }
 
         private void SetFlags(GroupNode node, GroupEntryData entry)
@@ -165,19 +173,56 @@ namespace TaoTie.Inspector.Editor
 
         private void DrawGroupNode(GroupNode node, string containerPath, Action<GroupEntryData> drawProperty)
         {
-            // Draw direct entries (skip container entries — they are foldout headers)
+            // Interleave ungrouped entries and grouped (child) blocks by SortOrder,
+            // so a group is drawn at the position of its first (lowest-order) member
+            // instead of always after all ungrouped fields.
+            var units = new List<DrawUnit>();
+            int index = 0;
             foreach (var entry in node.DirectEntries)
             {
-                if (entry.IsFoldoutContainer) continue;
+                if (entry.IsFoldoutContainer) continue; // drawn via its container node
                 if (!entry.Visible) continue;
-                drawProperty(entry);
+                units.Add(new DrawUnit { sort = entry.SortOrder, index = index++, entry = entry });
             }
-
-            // Draw child groups
             foreach (var child in node.Children)
             {
-                DrawSingleGroup(child, containerPath, drawProperty);
+                units.Add(new DrawUnit { sort = GetEffectiveSortOrder(child), index = index++, child = child });
             }
+
+            units.Sort((a, b) =>
+            {
+                int c = a.sort.CompareTo(b.sort);
+                return c != 0 ? c : a.index.CompareTo(b.index);
+            });
+
+            foreach (var unit in units)
+            {
+                if (unit.entry != null)
+                    drawProperty(unit.entry);
+                else
+                    DrawSingleGroup(unit.child, containerPath, drawProperty);
+            }
+        }
+
+        private struct DrawUnit
+        {
+            public float sort;
+            public int index;
+            public GroupEntryData entry;
+            public GroupNode child;
+        }
+
+        // Effective sort order of a node = minimum SortOrder across its direct entries
+        // and all descendant group nodes (so the block is placed at its lowest member).
+        private float GetEffectiveSortOrder(GroupNode node)
+        {
+            float min = node.SortOrder;
+            foreach (var child in node.Children)
+            {
+                float childMin = GetEffectiveSortOrder(child);
+                if (childMin < min) min = childMin;
+            }
+            return min;
         }
 
         private void DrawSingleGroup(GroupNode node, string containerPath, Action<GroupEntryData> drawProperty)

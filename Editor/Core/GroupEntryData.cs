@@ -28,6 +28,11 @@ namespace TaoTie.Inspector.Editor
         // Original entry data (TaoTiePropertyEntry or MemberItem) — passed back in draw callback
         public object UserData;
 
+        // Sort weight used to interleave grouped and ungrouped entries.
+        // Reflection path sets this from MemberItem.MinSort; SerializedProperty path leaves it 0
+        // (entries keep their natural SerializedProperty order).
+        public float SortOrder;
+
         /// <summary>Returns the group path for tree building, or null if ungrouped.</summary>
         public string GetGroupPath()
         {
