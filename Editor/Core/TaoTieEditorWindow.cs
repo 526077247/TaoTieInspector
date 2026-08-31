@@ -75,6 +75,8 @@ namespace TaoTie.Inspector.Editor
             // Use DrawBase (reflection path) — same as Graph, gives consistent
             // foldout alignment without the SerializedProperty overhead.
             DrawBase.SetAvailableWidth(position.width - 40f);
+            // Plain EditorWindow (not a Graph): [DrawIgnore] must not hide fields here.
+            DrawBase.s_IsGraphContext = false;
             drawBase.DrawObjectInspector(this, true);
 
             EditorGUILayout.EndScrollView();

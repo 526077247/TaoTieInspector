@@ -930,7 +930,10 @@ namespace TaoTie.Inspector.Editor
                     {
                         EditorGUILayout.Space(10);
                         // NodeView decides what to show
+                        bool oldGraphCtx = DrawBase.s_IsGraphContext;
+                        DrawBase.s_IsGraphContext = true;
                         view.DrawInspector(true);
+                        DrawBase.s_IsGraphContext = oldGraphCtx;
                     }
                     foldNode[m_SelectedNodes[i].id] = fold;
                     EditorGUILayout.EndFoldoutHeaderGroup();
@@ -944,7 +947,10 @@ namespace TaoTie.Inspector.Editor
 
         protected virtual void DrawGraphInspector()
         {
+            bool oldGraphCtx = DrawBase.s_IsGraphContext;
+            DrawBase.s_IsGraphContext = true;
             drawBase.DrawObjectInspector(m_Graph, true);
+            DrawBase.s_IsGraphContext = oldGraphCtx;
         }
         #endregion
     }

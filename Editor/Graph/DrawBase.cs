@@ -38,6 +38,13 @@ namespace TaoTie.Inspector.Editor
         /// <summary>Actual available width for layout (set by DrawObjectInspector from GUILayout context)</summary>
         public static float s_AvailableWidth = 0f;
 
+        /// <summary>
+        /// True when the current draw originates from a Graph (node view / details panel /
+        /// graph inspector). When false (e.g. a plain TaoTieEditorWindow config editor),
+        /// [DrawIgnore] attributes are ignored so all fields remain visible.
+        /// </summary>
+        public static bool s_IsGraphContext = false;
+
         /// <summary>Set the actual available width for box+grid layout calculations.</summary>
         public static void SetAvailableWidth(float width)
         {
@@ -202,7 +209,7 @@ namespace TaoTie.Inspector.Editor
                 else if (attr is HorizontalGroupAttribute hg) horizGroup = hg.GroupName;
                 else if (attr is DrawIgnoreAttribute dia)
                 {
-                    if (dia.Ignore == Ignore.All) data.Visible = false;
+                    if (s_IsGraphContext && dia.Ignore == Ignore.All) data.Visible = false;
                 }
             }
 
@@ -380,7 +387,9 @@ namespace TaoTie.Inspector.Editor
         protected virtual bool NeedShowInspector(MemberInfo member, object obj, bool isDetails)
         {
             if (!SelectMemberInfo(member, obj, isDetails)) return false;
-            if (GetCachedAttr<DrawIgnoreAttribute>(member) is DrawIgnoreAttribute ignoreAttribute)
+            // [DrawIgnore] only applies when drawing inside a Graph, not in a plain
+            // EditorWindow (config editor) where every field should stay visible.
+            if (s_IsGraphContext && GetCachedAttr<DrawIgnoreAttribute>(member) is DrawIgnoreAttribute ignoreAttribute)
             {
                 if (ignoreAttribute.Ignore == Ignore.All) return false;
                 if (ignoreAttribute.Ignore == Ignore.Details == isDetails) return false;
@@ -2509,8 +2518,10 @@ namespace TaoTie.Inspector.Editor
             RefreshValueDropDown(field, obj, attr.MemberName);
             if (!valueDropdown.TryGetValue(field, out var items) || items == null || items.Length == 0)
             {
-                // No dropdown items — fallback to default list drawing
-                EditorGUILayout.LabelField(GetShowName(field)?.text ?? field.Name, EditorStyles.boldLabel);
+                // No dropdown items available (e.g. no configured source objects) —
+                // fall back to the standard box+grid array drawing so the field remains
+                // visible and editable instead of collapsing to a bare label.
+                DrawIListBoxGrid(field, obj, list, list, isDetails);
                 return;
             }
 
@@ -2547,14 +2558,37 @@ namespace TaoTie.Inspector.Editor
             vdFoldout = EditorGUI.Foldout(vdFoldRect, vdFoldout, new GUIContent(title, vdTooltip), true);
             SessionState.SetBool(vdFoldKey, vdFoldout);
             EditorGUI.LabelField(vdCountRect, vdCountContent, EditorStyles.miniLabel);
+            bool isArray = field.FieldType.IsArray;
             if (GUI.Button(new Rect(vdPlusX, vdTitleRect.y, 24f, vdTitleRect.height), "+", EditorStyles.toolbarButton))
             {
-                list.Add(itemType.IsValueType ? Activator.CreateInstance(itemType) : null);
+                if (isArray)
+                {
+                    var newArr = Array.CreateInstance(itemType, len + 1);
+                    if (len > 0) Array.Copy(list as Array, newArr, len);
+                    field.SetValue(obj, newArr);
+                }
+                else
+                {
+                    list.Add(itemType.IsValueType ? Activator.CreateInstance(itemType) : null);
+                }
                 changed = true;
             }
             if (GUI.Button(new Rect(vdMinusX, vdTitleRect.y, 24f, vdTitleRect.height), "-", EditorStyles.toolbarButton))
             {
-                if (len > 0) { list.RemoveAt(len - 1); changed = true; }
+                if (len > 0)
+                {
+                    if (isArray)
+                    {
+                        var newArr = Array.CreateInstance(itemType, len - 1);
+                        if (len > 1) Array.Copy(list as Array, newArr, len - 1);
+                        field.SetValue(obj, newArr);
+                    }
+                    else
+                    {
+                        list.RemoveAt(len - 1);
+                    }
+                    changed = true;
+                }
             }
 
             // Data rows
@@ -2693,7 +2727,21 @@ namespace TaoTie.Inspector.Editor
 
             if (removeIndex >= 0)
             {
-                list.RemoveAt(removeIndex);
+                if (field.FieldType.IsArray)
+                {
+                    var newArr = Array.CreateInstance(itemType, len - 1);
+                    int j = 0;
+                    for (int k = 0; k < len; k++)
+                    {
+                        if (k == removeIndex) continue;
+                        newArr.SetValue(list[k], j++);
+                    }
+                    field.SetValue(obj, newArr);
+                }
+                else
+                {
+                    list.RemoveAt(removeIndex);
+                }
                 changed = true;
             }
 
@@ -2704,9 +2752,10 @@ namespace TaoTie.Inspector.Editor
 
             if (changed)
             {
-                // Sync back to field for Array (IList adapter is the array itself for List)
-                if (field.FieldType.IsArray)
-                    field.SetValue(obj, list);
+                // For Array fields, add/remove/delete already assign a brand-new array
+                // directly to the field (Array is fixed-size, so in-place IList mutation
+                // is not possible). Element edits mutate the existing array in place, so
+                // no extra write-back is needed here.
                 if (field.GetCustomAttribute(typeof(OnCollectionChangedAttribute)) is OnCollectionChangedAttribute
                     collectionChangedAttribute)
                 {
@@ -2927,13 +2976,6 @@ namespace TaoTie.Inspector.Editor
             if (member is PropertyInfo prop && !prop.CanWrite) return false;
 
             if (GetCachedAttr<HideInInspector>(member) is HideInInspector)
-            {
-                return false;
-            }
-
-            // Filter out DrawIgnore(All) members early
-            if (GetCachedAttr<DrawIgnoreAttribute>(member) is DrawIgnoreAttribute ignoreAttr
-                && ignoreAttr.Ignore == Ignore.All)
             {
                 return false;
             }

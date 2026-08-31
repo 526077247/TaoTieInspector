@@ -314,7 +314,10 @@ namespace TaoTie.Inspector.Editor
                 EditorGUIUtility.labelWidth = Mathf.Max(60f, ratioW);
                 float oldAvailW = DrawBase.s_AvailableWidth;
                 DrawBase.SetAvailableWidth(availableW);
+                bool oldGraphCtx = DrawBase.s_IsGraphContext;
+                DrawBase.s_IsGraphContext = true;
                 DrawInspector();
+                DrawBase.s_IsGraphContext = oldGraphCtx;
                 DrawBase.SetAvailableWidth(oldAvailW);
                 EditorGUIUtility.labelWidth = oldLabelW;
             }
