@@ -613,8 +613,11 @@ namespace TaoTie.Inspector.Editor
             // Display field name and value
             if (type == typeof(string))
             {
+                string name = "GraphEditor_Text_Field_" + (field != null ? field.Name : "value");
+                GUI.SetNextControlName(name);
                 if (showName == null) value = EditorGUILayout.TextField((string) value);
                 else value = EditorGUILayout.TextField(showName, (string) value, options);
+                GraphWindow.MarkTextFocused(name);
             }
             else if (type == typeof(int))
             {
@@ -1904,7 +1907,10 @@ namespace TaoTie.Inspector.Editor
             }
             else if (type == typeof(string))
             {
+                string name = "GraphEditor_Text_FieldRect_" + (field != null ? field.Name : "value");
+                GUI.SetNextControlName(name);
                 value = noLabel ? EditorGUI.TextField(rect, (string)value) : EditorGUI.TextField(rect, label, (string)value);
+                GraphWindow.MarkTextFocused(name);
             }
             else if (type == typeof(long))
             {
@@ -2038,7 +2044,12 @@ namespace TaoTie.Inspector.Editor
                     // For value types, use direct EditorGUI fields instead of DrawNormalField
                     // to avoid GUILayout layout pushing to next line
                     if (itemType == typeof(string))
+                    {
+                        string name = "GraphEditor_Text_DictVal_" + field.Name + "_" + rowIdx;
+                        GUI.SetNextControlName(name);
                         newItem = EditorGUI.TextField(valRect, (string)newItem);
+                        GraphWindow.MarkTextFocused(name);
+                    }
                     else if (itemType == typeof(int))
                         newItem = EditorGUI.IntField(valRect, (int)newItem);
                     else if (itemType == typeof(float))
@@ -2128,7 +2139,10 @@ namespace TaoTie.Inspector.Editor
                 }
                 var newKey = inputKey;
                 Rect keyInputRect = new Rect(addRect.x, addRect.y, addKeyW, addRect.height);
+                string name = "GraphEditor_Text_DictKey_" + field.Name;
+                GUI.SetNextControlName(name);
                 newKey = EditorGUI.TextField(keyInputRect, (string)newKey);
+                GraphWindow.MarkTextFocused(name);
                 inputKey = newKey;
             }
             else if (keyType.IsEnum)

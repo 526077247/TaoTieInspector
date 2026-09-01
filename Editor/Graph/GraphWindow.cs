@@ -9,6 +9,21 @@ namespace TaoTie.Inspector.Editor
 {
     public abstract partial class GraphWindow  : EditorWindow  
     {
+        // 标记当前是否有文本输入框持有焦点（分组重命名/端口重命名/字符串字段等）。
+        // 焦点判断放在可靠的绘制阶段（Layout/Repaint）写入，键盘事件阶段只读取上一帧的结果，
+        // 避免 GetNameOfFocusedControl 在键盘事件阶段返回不可靠值导致误判。
+        internal static bool s_EditingText;
+
+        // 在可靠的绘制阶段（Layout/Repaint）被文本输入框调用：若该控件当前持有键盘焦点，
+        // 则标记本帧处于文本编辑状态，供键盘事件阶段据此跳过 Node 级别的 Ctrl+C/V 等处理。
+        // 使用 EditorGUIUtility.editingTextField（全局权威信号）为主判据，控件名作为辅助。
+        internal static void MarkTextFocused(string controlName)
+        {
+            if (EditorGUIUtility.editingTextField ||
+                (!string.IsNullOrEmpty(controlName) && GUI.GetNameOfFocusedControl() == controlName))
+                s_EditingText = true;
+        }
+
         protected DrawBase drawBase;
         protected GraphBase m_Graph;
         private GraphMode m_Mode = GraphMode.None;
@@ -319,7 +334,15 @@ namespace TaoTie.Inspector.Editor
         {
             // Only handle on KeyUp — fires exactly once per press, not repeatedly while held
             var evt = Event.current;
-            if (evt.type == EventType.KeyUp && (evt.control || evt.command))
+
+            // Focus on text input boxes (group rename / port rename / string fields etc.) should
+            // let the input box itself handle Ctrl+C/V — never trigger Node-level copy/paste.
+            // The flag is written during the reliable layout/repaint pass; keyboard events only read it.
+            if (evt.type == EventType.Layout)
+                s_EditingText = false;
+            bool editingText = s_EditingText || EditorGUIUtility.editingTextField;
+
+            if (evt.type == EventType.KeyUp && (evt.control || evt.command) && !editingText)
             {
                 if (!evt.shift && evt.keyCode == KeyCode.Z)
                 {
@@ -355,7 +378,7 @@ namespace TaoTie.Inspector.Editor
                 }
             }
             // Consume KeyDown to prevent Unity from generating ExecuteCommand events
-            if (evt.type == EventType.KeyDown && (evt.control || evt.command))
+            if (evt.type == EventType.KeyDown && (evt.control || evt.command) && !editingText)
             {
                 if (evt.keyCode == KeyCode.Z || evt.keyCode == KeyCode.Y ||
                     evt.keyCode == KeyCode.C || evt.keyCode == KeyCode.V)
@@ -367,8 +390,8 @@ namespace TaoTie.Inspector.Editor
             // Also consume any ExecuteCommand that slipped through
             if (evt.type == EventType.ExecuteCommand || evt.type == EventType.ValidateCommand)
             {
-                if (evt.commandName == "Undo" || evt.commandName == "Redo" ||
-                    evt.commandName == "Copy" || evt.commandName == "Paste")
+                if (!editingText && (evt.commandName == "Undo" || evt.commandName == "Redo" ||
+                    evt.commandName == "Copy" || evt.commandName == "Paste"))
                 {
                     evt.Use();
                     return;

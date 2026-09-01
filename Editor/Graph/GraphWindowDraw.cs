@@ -348,8 +348,10 @@ namespace TaoTie.Inspector.Editor
             var titleLabelRect = new Rect(titleRect.x + 8, titleRect.y + 4, titleRect.width - 50, titleRect.height - 8);
             if (group.isTitleEditing)
             {
-                GUI.SetNextControlName("GroupTitleEdit_" + group.id);
+                const string name = "GraphEditor_Text_GroupTitle_";
+                GUI.SetNextControlName(name + group.id);
                 group.titleEditBuffer = EditorGUI.TextField(titleLabelRect, group.titleEditBuffer ?? group.title);
+                GraphWindow.MarkTextFocused(name + group.id);
                 var e = Event.current;
                 if (e is { type: EventType.KeyUp, keyCode: KeyCode.Return })
                 {
@@ -412,8 +414,10 @@ namespace TaoTie.Inspector.Editor
             var titleTextRect = new Rect(titleRect.x + 8, titleRect.y + 2, titleRect.width - 50, titleRect.height - 4);
             if (group.isTitleEditing)
             {
-                GUI.SetNextControlName("GroupTitleEdit_" + group.id);
+                const string name = "GraphEditor_Text_GroupTitle_";
+                GUI.SetNextControlName(name + group.id);
                 group.titleEditBuffer = EditorGUI.TextField(titleTextRect, group.titleEditBuffer ?? group.title);
+                GraphWindow.MarkTextFocused(name + group.id);
                 var e = Event.current;
                 if (e is { type: EventType.KeyUp, keyCode: KeyCode.Return })
                 {
@@ -505,7 +509,10 @@ namespace TaoTie.Inspector.Editor
             // Inline rename
             if (s_PortRenameId == port.id)
                 {
+                    string name = "GraphEditor_Text_PortRename_" + port.id;
+                    GUI.SetNextControlName(name);
                     s_PortRenameBuffer = EditorGUI.TextField(labelRect, s_PortRenameBuffer);
+                    GraphWindow.MarkTextFocused(name);
                     var ev = Event.current;
                     if (ev is { type: EventType.KeyUp, keyCode: KeyCode.Return })
                     {
