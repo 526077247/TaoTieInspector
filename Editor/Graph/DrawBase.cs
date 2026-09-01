@@ -884,7 +884,8 @@ namespace TaoTie.Inspector.Editor
             if (value is Array arr) { count = arr.Length; list = arr; }
             else if (value is IList il) { count = il.Count; list = il; }
 
-            // Collect column names from first non-null element
+            // Collect column names from the declared element type (works even for empty arrays),
+            // falling back to the first non-null element's runtime type when available.
             var columnNames = new List<string>();
             var columnFields = new List<FieldInfo>();
             Type itemType = null;
@@ -895,14 +896,31 @@ namespace TaoTie.Inspector.Editor
                     if (list[i] != null)
                     {
                         itemType = list[i].GetType();
-                        var fields = itemType.GetFields(BindingFlags.Public | BindingFlags.Instance);
-                        foreach (var f in fields)
-                        {
-                            columnNames.Add(f.Name);
-                            columnFields.Add(f);
-                        }
                         break;
                     }
+                }
+            }
+
+            if (itemType == null)
+            {
+                if (field.FieldType.IsArray)
+                {
+                    itemType = field.FieldType.GetElementType();
+                }
+                else if (field.FieldType.IsGenericType
+                         && field.FieldType.GetGenericArguments().Length > 0)
+                {
+                    itemType = field.FieldType.GetGenericArguments()[0];
+                }
+            }
+
+            if (itemType != null)
+            {
+                var fields = itemType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+                foreach (var f in fields)
+                {
+                    columnNames.Add(f.Name);
+                    columnFields.Add(f);
                 }
             }
 
@@ -951,6 +969,7 @@ namespace TaoTie.Inspector.Editor
                     var elemType = field.FieldType.GetElementType();
                     var newArr = Array.CreateInstance(elemType, count + 1);
                     if (count > 0) Array.Copy((Array)value, newArr, count);
+                    newArr.SetValue(CreateTableRowItem(elemType), count);
                     field.SetValue(obj, newArr);
                 }
                 else
@@ -1129,7 +1148,15 @@ namespace TaoTie.Inspector.Editor
                             object newVal = fieldValue;
                             Rect colRect = new Rect(dx, rowRect.y, cw, rowRect.height);
                             EditorGUI.BeginChangeCheck();
-                            DrawNormalFieldRect(f.FieldType, colRect, GUIContent.none, ref newVal, false, f);
+                            if (f.GetCustomAttribute(typeof(ValueDropdownAttribute)) is ValueDropdownAttribute
+                                cellDropdownAttribute)
+                            {
+                                DrawTableCellValueDropdown(f, item, cellDropdownAttribute, colRect, ref newVal);
+                            }
+                            else
+                            {
+                                DrawNormalFieldRect(f.FieldType, colRect, GUIContent.none, ref newVal, false, f);
+                            }
                             if (EditorGUI.EndChangeCheck())
                                 tableChanged = true;
                             if (!IsEqual(newVal, fieldValue))
@@ -1204,6 +1231,75 @@ namespace TaoTie.Inspector.Editor
                 ReflectionMethodInvoker.InvokeNoArg(obj, field.DeclaringType, collectionChangedAttribute.After);
             }
             return;
+        }
+
+        /// <summary>
+        /// Create a default table row item: value types get a default instance, concrete
+        /// non-abstract classes get a new instance (with a parameterless constructor), and
+        /// abstract classes return null (so the type-selector popup is shown instead).
+        /// </summary>
+        protected virtual object CreateTableRowItem(Type itemType)
+        {
+            if (itemType == null || itemType.IsAbstract || itemType.IsInterface)
+                return null;
+            if (itemType.IsValueType)
+                return Activator.CreateInstance(itemType);
+            if (itemType.GetConstructor(Type.EmptyTypes) != null)
+                return Activator.CreateInstance(itemType);
+            return null;
+        }
+
+        /// <summary>
+        /// Draw a rect-based ValueDropdown button for a single cell inside a TableList row.
+        /// Uses the same valueDropdown cache/RefreshValueDropDown mechanism as the normal
+        /// (layout-based) ValueDropdown drawing, so the "@Type.Method()" member syntax works.
+        /// </summary>
+        protected virtual void DrawTableCellValueDropdown(FieldInfo field, object obj,
+            ValueDropdownAttribute attribute, Rect rect, ref object value)
+        {
+            if (!valueDropdown.TryGetValue(field, out var list) || list == null || list.Length == 0)
+            {
+                RefreshValueDropDown(field, obj, attribute.MemberName);
+                valueDropdown.TryGetValue(field, out list);
+            }
+
+            string currentText = value?.ToString();
+            int selectedIndex = -1;
+            if (list != null)
+            {
+                for (int i = 0; i < list.Length; i++)
+                {
+                    if (IsEqual(value, list[i].Value))
+                    {
+                        selectedIndex = i;
+                        currentText = list[i].Text;
+                        break;
+                    }
+                }
+            }
+
+            if (GUI.Button(rect, new GUIContent(currentText), EditorStyles.popup))
+            {
+                RefreshValueDropDown(field, obj, attribute.MemberName);
+                if (valueDropdown.TryGetValue(field, out list) && list != null)
+                {
+                    var menu = new GenericMenu();
+                    for (int i = 0; i < list.Length; i++)
+                    {
+                        var ii = i;
+                        menu.AddItem(new GUIContent(list[i].Text), i == selectedIndex, () =>
+                        {
+                            if (ii != selectedIndex)
+                            {
+                                var chosen = list[ii].Value;
+                                field.SetValue(obj, chosen);
+                                GUI.changed = true;
+                            }
+                        });
+                    }
+                    menu.ShowAsContext();
+                }
+            }
         }
 
         /// <summary>
