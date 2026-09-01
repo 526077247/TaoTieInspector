@@ -10,6 +10,8 @@ namespace TaoTie.Inspector
         All,
         Details,
         NodeView,
+        Graph,
+        EditorWindow,
     }
 
     #endregion
@@ -17,9 +19,12 @@ namespace TaoTie.Inspector
     #region Graph Node Attributes
 
     /// <summary>
-    /// Ignore field drawing in Graph NodeView and/or details panel.
-    /// All = ignore everywhere, Details = ignore in details panel, NodeView = ignore in node view.
-    /// Treated as HideInInspector in normal Inspector.
+    /// Ignore field drawing in specific draw contexts.
+    /// All = ignore everywhere, Details = ignore in graph details panel,
+    /// NodeView = ignore in graph node view, Graph = ignore in any graph context,
+    /// EditorWindow = ignore in a TaoTieEditorWindow.
+    /// Fields marked with Graph / EditorWindow / Details / NodeView remain visible
+    /// in a plain (ScriptableObject / MonoBehaviour) Inspector.
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
     public class DrawIgnoreAttribute : PropertyAttribute

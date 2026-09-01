@@ -40,10 +40,39 @@ namespace TaoTie.Inspector.Editor
 
         /// <summary>
         /// True when the current draw originates from a Graph (node view / details panel /
-        /// graph inspector). When false (e.g. a plain TaoTieEditorWindow config editor),
-        /// [DrawIgnore] attributes are ignored so all fields remain visible.
+        /// graph inspector). [DrawIgnore(Ignore.Graph|Details|NodeView|All)] apply here.
         /// </summary>
         public static bool s_IsGraphContext = false;
+
+        /// <summary>
+        /// True when the current draw originates from a TaoTieEditorWindow (config editor).
+        /// [DrawIgnore(Ignore.EditorWindow|All)] apply here.
+        /// </summary>
+        public static bool s_IsEditorWindowContext = false;
+
+        /// <summary>
+        /// Whether a field carrying [DrawIgnore] should be hidden in the current
+        /// draw context. Handles All / Graph / EditorWindow / Details / NodeView.
+        /// </summary>
+        protected static bool IsDrawIgnored(DrawIgnoreAttribute ignoreAttribute, bool isDetails)
+        {
+            if (ignoreAttribute == null) return false;
+            switch (ignoreAttribute.Ignore)
+            {
+                case Ignore.All:
+                    return true;
+                case Ignore.Graph:
+                    return s_IsGraphContext;
+                case Ignore.EditorWindow:
+                    return s_IsEditorWindowContext;
+                case Ignore.Details:
+                    return s_IsGraphContext && isDetails;
+                case Ignore.NodeView:
+                    return s_IsGraphContext && !isDetails;
+                default:
+                    return false;
+            }
+        }
 
         /// <summary>Set the actual available width for box+grid layout calculations.</summary>
         public static void SetAvailableWidth(float width)
@@ -209,7 +238,7 @@ namespace TaoTie.Inspector.Editor
                 else if (attr is HorizontalGroupAttribute hg) horizGroup = hg.GroupName;
                 else if (attr is DrawIgnoreAttribute dia)
                 {
-                    if (s_IsGraphContext && dia.Ignore == Ignore.All) data.Visible = false;
+                    if (IsDrawIgnored(dia, isDetails)) data.Visible = false;
                 }
             }
 
@@ -387,13 +416,10 @@ namespace TaoTie.Inspector.Editor
         protected virtual bool NeedShowInspector(MemberInfo member, object obj, bool isDetails)
         {
             if (!SelectMemberInfo(member, obj, isDetails)) return false;
-            // [DrawIgnore] only applies when drawing inside a Graph, not in a plain
-            // EditorWindow (config editor) where every field should stay visible.
-            if (s_IsGraphContext && GetCachedAttr<DrawIgnoreAttribute>(member) is DrawIgnoreAttribute ignoreAttribute)
-            {
-                if (ignoreAttribute.Ignore == Ignore.All) return false;
-                if (ignoreAttribute.Ignore == Ignore.Details == isDetails) return false;
-            }
+            // [DrawIgnore] hides fields in the contexts it targets (Graph / EditorWindow /
+            // specific graph sub-panels), leaving them visible elsewhere.
+            if (GetCachedAttr<DrawIgnoreAttribute>(member) is DrawIgnoreAttribute ignoreAttribute
+                && IsDrawIgnored(ignoreAttribute, isDetails)) return false;
 
             // AllowMultiple: all ShowIf must pass (AND)
             var showIfs = member.GetCustomAttributes<ShowIfAttribute>(true);
@@ -2940,7 +2966,9 @@ namespace TaoTie.Inspector.Editor
             {
                 return false;
             }
-            // Skip private fields unless they have [SerializeField] or a TaoTie attribute
+            // Skip private fields unless they have [SerializeField] or a TaoTie attribute.
+            // DrawIgnore is intentionally NOT an exception: private fields (e.g. the internal
+            // drawBase / scrollPosition in a TaoTieEditorWindow) are never drawn.
             if (member is FieldInfo pf && !pf.IsPublic
                 && !pf.IsDefined(typeof(SerializeField), true)
                 && !pf.IsDefined(typeof(LabelTextAttribute), true)
@@ -2969,7 +2997,6 @@ namespace TaoTie.Inspector.Editor
                 && !pf.IsDefined(typeof(MinValueAttribute), true)
                 && !pf.IsDefined(typeof(MaxValueAttribute), true)
                 && !pf.IsDefined(typeof(NotNullAttribute), true)
-                && !pf.IsDefined(typeof(DrawIgnoreAttribute), true)
                 && !pf.IsDefined(typeof(TableMatrixAttribute), true)
                 && !pf.IsDefined(typeof(EnumToggleButtonsAttribute), true)
                 && !pf.IsDefined(typeof(NotAssetsAttribute), true))

@@ -27,8 +27,8 @@ namespace TaoTie.Inspector.Editor
     /// </summary>
     public abstract class TaoTieEditorWindow : UnityEditor.EditorWindow
     {
-        [DrawIgnore] private DrawBase drawBase;
-        [DrawIgnore] private Vector2 scrollPosition;
+        private DrawBase drawBase;
+        private Vector2 scrollPosition;
 
         /// <summary>
         /// Optional: override to provide a custom title for the window.
@@ -75,9 +75,15 @@ namespace TaoTie.Inspector.Editor
             // Use DrawBase (reflection path) — same as Graph, gives consistent
             // foldout alignment without the SerializedProperty overhead.
             DrawBase.SetAvailableWidth(position.width - 40f);
-            // Plain EditorWindow (not a Graph): [DrawIgnore] must not hide fields here.
+            // Plain EditorWindow (not a Graph): [DrawIgnore(Ignore.EditorWindow)] hides
+            // the internal drawBase/scrollPosition while user fields stay visible.
+            bool oldGraphCtx = DrawBase.s_IsGraphContext;
+            bool oldEditorWindowCtx = DrawBase.s_IsEditorWindowContext;
             DrawBase.s_IsGraphContext = false;
+            DrawBase.s_IsEditorWindowContext = true;
             drawBase.DrawObjectInspector(this, true);
+            DrawBase.s_IsGraphContext = oldGraphCtx;
+            DrawBase.s_IsEditorWindowContext = oldEditorWindowCtx;
 
             EditorGUILayout.EndScrollView();
         }
