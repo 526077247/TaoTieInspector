@@ -29,6 +29,30 @@ namespace TaoTie.Inspector.Editor
         {
             s_ItemCache.Clear();
         }
+        /// <summary>
+        /// 求值 MemberName 得到下拉选项（供 Animator 窗口等 Rect 绘制场景复用）。
+        /// target 为字段宿主实例（顶层为 SMB 实例，[SerializeReference] 子字段为 managed 实例）。
+        /// </summary>
+        public static List<ValueDropdownItem> GetItems(object target, string memberName)
+        {
+            return GetDropdownItems(target, memberName);
+        }
+
+        public static object GetValue(SerializedProperty property)
+        {
+            return GetPropertyValue(property);
+        }
+
+        public static void SetValue(SerializedProperty property, object value)
+        {
+            SetPropertyValue(property, value);
+        }
+
+        public static bool EqualValue(object a, object b)
+        {
+            return AreEqual(a, b);
+        }
+
         public static void Draw(SerializedProperty property, ValueDropdownAttribute attribute,
             object target, GUIContent label)
         {

@@ -149,9 +149,15 @@ namespace TaoTie.Inspector.Editor
             // Draw the property
             bool changed = false;
 
+            // 顶层 [SerializeReference] 字段（StateMachineBehaviour）→ Odin 同款面板：
+            // 普通 Inspector 里编辑侧反射 managed ref 子树并按 SMB 分组引擎绘制，无字段级钩子。
+            if (DrawSmbManagedRefPanel(entry, target, ref changed))
+            {
+                // 已由面板接管
+            }
             // TypeFilter: if the property is a managed reference with a TypeFilter,
             // provide a type selection dropdown when null, and a foldout + "SetNull" button when not null
-            if (entry.TypeFilter != null && entry.Property.propertyType == SerializedPropertyType.ManagedReference)
+            else if (entry.TypeFilter != null && entry.Property.propertyType == SerializedPropertyType.ManagedReference)
             {
                 if (entry.Property.managedReferenceValue == null)
                 {
@@ -1462,6 +1468,70 @@ namespace TaoTie.Inspector.Editor
 
             s_TypeFilterCache[cacheKey] = result;
             return result;
+        }
+
+        /// <summary>
+        /// Odin 同款：普通 Inspector 里选中 StateMachineBehaviour 时，顶层 [SerializeReference]
+        /// 字段以 SMB 面板方式绘制（头部行 + SetNull + 按钮条 + 分组），不再走 Unity 默认
+        /// managed-ref 折叠框。编辑侧直接反射 managed 子树，无字段级钩子。
+        /// 返回 true 表示本字段已由面板接管。
+        /// </summary>
+        private static bool DrawSmbManagedRefPanel(TaoTiePropertyEntry entry, object target, ref bool changed)
+        {
+            if (!(target is UnityEngine.StateMachineBehaviour)) return false;
+            var p = entry.Property;
+            if (p == null || p.propertyType != SerializedPropertyType.ManagedReference) return false;
+            if (string.IsNullOrEmpty(entry.PropertyPath) || entry.PropertyPath.IndexOf('.') >= 0) return false;
+
+            var label = GetLabel(entry) ?? new GUIContent(ObjectNames.NicifyVariableName(entry.PropertyName));
+            string foldKey = "TaoTie_Fold_" + p.propertyPath;
+            bool fold = SessionState.GetBool(foldKey, true);
+
+            if (p.managedReferenceValue == null)
+            {
+                var fieldType = SMBPropertyLayout.ManagedRefFieldType(p);
+                var types = SMBPropertyLayout.CollectSubtypes(fieldType);
+                EditorGUILayout.LabelField(label);
+                int idx = EditorGUILayout.Popup(-1, SMBPropertyLayout.ToTypeNames(types));
+                if (idx >= 0 && idx < types.Count)
+                {
+                    _pendingManagedReferenceSets.Add((p.propertyPath, types[idx]));
+                    changed = true;
+                }
+                return true;
+            }
+
+            const float buttonW = 55f;
+            Rect foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
+            Rect buttonRect = new Rect(foldRect.xMax - buttonW - 2f, foldRect.y, buttonW, foldRect.height);
+            Rect actualFoldRect = new Rect(foldRect.x, foldRect.y,
+                Mathf.Max(0f, buttonRect.x - foldRect.x - 4f), foldRect.height);
+
+            bool setNullClicked = GUI.Button(buttonRect, "SetNull");
+            fold = EditorGUI.Foldout(actualFoldRect, fold, label, true);
+            SessionState.SetBool(foldKey, fold);
+
+            // 类型名显示在标签与按钮之间
+            var refType = p.managedReferenceValue.GetType();
+            float labelW = EditorStyles.foldout.CalcSize(label).x + 18f;
+            var typeRect = new Rect(foldRect.x + labelW, foldRect.y,
+                Mathf.Max(0f, buttonRect.x - (foldRect.x + labelW) - 4f), foldRect.height);
+            EditorGUI.LabelField(typeRect, LabelResolver.GetTypeLabel(refType), EditorStyles.boldLabel);
+
+            if (setNullClicked)
+            {
+                _pendingManagedReferenceClears.Add(p.propertyPath);
+                changed = true;
+            }
+
+            if (fold && !setNullClicked)
+            {
+                float w = foldRect.width;
+                float h = SMBGroupLayout.GetManagedChildrenHeight(p, w);
+                var bodyRect = GUILayoutUtility.GetRect(w, h);
+                SMBGroupLayout.DrawManagedChildren(bodyRect, p, bodyRect.y, bodyRect.x + SMBPropertyLayout.FoldIndent);
+            }
+            return true;
         }
     }
 }

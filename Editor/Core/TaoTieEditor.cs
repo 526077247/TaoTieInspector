@@ -13,7 +13,6 @@ namespace TaoTie.Inspector.Editor
     {
         private TaoTiePropertyProcessor processor;
         private TaoTieGroupManager groupManager;
-        private DrawBase drawBase;
         private bool useEnhancedDrawing;
         private bool initialized;
 
@@ -35,15 +34,17 @@ namespace TaoTie.Inspector.Editor
 
             processor = new TaoTiePropertyProcessor();
             groupManager = new TaoTieGroupManager();
-            drawBase = new DrawBase();
 
             if (target != null)
             {
                 System.Type targetType = target.GetType();
                 bool hasDrawWithUnity = targetType.IsDefined(typeof(DrawWithUnityAttribute), true);
                 bool forceEnhanced = typeof(IForceTaoTieDrawing).IsAssignableFrom(targetType);
-                useEnhancedDrawing = !hasDrawWithUnity &&
-                    (forceEnhanced || TaoTiePropertyProcessor.HasAnyTaoTieAttributes(targetType));
+                // StateMachineBehaviour is always drawn by the SMB panel engine (normal Inspector and
+                // Animator window), so enhanced drawing is forced regardless of TaoTie attribute presence.
+                bool forceSMB = target is UnityEngine.StateMachineBehaviour;
+                useEnhancedDrawing = (forceSMB || !hasDrawWithUnity) &&
+                    (forceSMB || forceEnhanced || TaoTiePropertyProcessor.HasAnyTaoTieAttributes(targetType));
             }
             else
             {
@@ -103,9 +104,11 @@ namespace TaoTie.Inspector.Editor
             if (cachedMergedEntries == null || cachedTargetType != target.GetType())
             {
                 cachedMergedEntries = BuildMergedEntries(entries, target);
-                cachedGroupEntries = ConvertToGroupData(cachedMergedEntries);
+                cachedManagedRefBasePathArray = CollectManagedRefBasePaths(cachedMergedEntries,
+                    target is UnityEngine.StateMachineBehaviour);
+                cachedGroupEntries = ConvertToGroupData(cachedMergedEntries,
+                    target is UnityEngine.StateMachineBehaviour, cachedManagedRefBasePathArray);
                 InsertButtonEntries(cachedGroupEntries);
-                cachedManagedRefBasePathArray = CollectManagedRefBasePaths(cachedMergedEntries);
                 cachedTableListPathArray = CollectTableListPaths(cachedMergedEntries);
                 cachedTargetType = target.GetType();
             }
@@ -129,6 +132,7 @@ namespace TaoTie.Inspector.Editor
             TaoTiePropertyLayout.ApplyPendingManagedReferences(serializedObject);
             serializedObject.ApplyModifiedProperties();
             TaoTiePropertyLayout.FlushPendingCallbacks();
+            SMBPropertyLayout.FlushPendingCallbacks();
         }
 
         /// <summary>
@@ -180,9 +184,11 @@ namespace TaoTie.Inspector.Editor
 
         /// <summary>
         /// Collect static managed-ref base paths (entries with TypeFilter / HideReferenceObjectPicker).
-        /// Called only when cache is rebuilt.
+        /// For StateMachineBehaviour targets, also collects ALL top-level managed-ref paths so the
+        /// SMB panel engine owns (and hides) the child entries. Called only when cache is rebuilt.
         /// </summary>
-        private static string[] CollectManagedRefBasePaths(List<TaoTiePropertyEntry> mergedEntries)
+        private static string[] CollectManagedRefBasePaths(List<TaoTiePropertyEntry> mergedEntries,
+            bool includeTopLevelManagedRefs = false)
         {
             var paths = new HashSet<string>();
             foreach (var e in mergedEntries)
@@ -192,6 +198,14 @@ namespace TaoTie.Inspector.Editor
                     if ((e.TypeFilter != null || e.HideReferenceObjectPicker != null)
                         && e.Property != null
                         && e.Property.propertyType == SerializedPropertyType.ManagedReference)
+                    {
+                        paths.Add(e.PropertyPath + ".");
+                    }
+                    else if (includeTopLevelManagedRefs
+                        && e.Property != null
+                        && e.Property.propertyType == SerializedPropertyType.ManagedReference
+                        && e.PropertyPath != null
+                        && !e.PropertyPath.Contains('.'))
                     {
                         paths.Add(e.PropertyPath + ".");
                     }
@@ -408,7 +422,8 @@ namespace TaoTie.Inspector.Editor
             return result;
         }
 
-        private static List<GroupEntryData> ConvertToGroupData(List<TaoTiePropertyEntry> entries)
+        private static List<GroupEntryData> ConvertToGroupData(List<TaoTiePropertyEntry> entries,
+            bool isStateMachineBehaviour, string[] managedRefBasePaths)
         {
             var result = new List<GroupEntryData>(entries.Count);
             // Collect TableList paths so we can mark children as invisible
@@ -421,6 +436,24 @@ namespace TaoTie.Inspector.Editor
 
             foreach (var e in entries)
             {
+                // For StateMachineBehaviour, the entire managed-ref subtree is owned and drawn by the
+                // SMB panel (DrawSmbManagedRefPanel). Exclude its child entries here so they cannot
+                // form empty outer group nodes (their [TabGroup] would render a tab with no content
+                // on top of the panel's own inner tab groups).
+                if (isStateMachineBehaviour && e.PropertyPath != null && managedRefBasePaths != null)
+                {
+                    bool isManagedRefChild = false;
+                    for (int b = 0; b < managedRefBasePaths.Length; b++)
+                    {
+                        if (e.PropertyPath.StartsWith(managedRefBasePaths[b]))
+                        {
+                            isManagedRefChild = true;
+                            break;
+                        }
+                    }
+                    if (isManagedRefChild) continue;
+                }
+
                 var data = new GroupEntryData
                 {
                     Visible = e.Visible,
