@@ -42,11 +42,21 @@ namespace TaoTie.Inspector.Editor
         private float m_DotSize;
         private int m_DotPointIndex;
         private int m_NumberOfPoints;
+        private readonly List<NodeView> m_PortNodeOrder = new List<NodeView>();
        
 
         #endregion
 
         #region DrawEdges
+
+        private Rect GetVisibleGridRect()
+        {
+            return new Rect(
+                -m_Graph.currentPanOffset.x / currentZoom,
+                -m_Graph.currentPanOffset.y / currentZoom,
+                m_ScaledGraphArea.width,
+                m_ScaledGraphArea.height);
+        }
 
         private void DrawEdges()
         {
@@ -58,28 +68,7 @@ namespace TaoTie.Inspector.Editor
                 m_AniTime = 0;
             }
 
-            var visibleGridRect = new Rect(
-                -m_Graph.currentPanOffset.x / currentZoom,
-                -m_Graph.currentPanOffset.y / currentZoom,
-                m_ScaledGraphArea.width,
-                m_ScaledGraphArea.height);
-
-            // Edges are drawn after all nodes, so any node body that overlaps the curve would be
-            // painted over. Occlude the curve against every visible node rect so edges appear to
-            // pass beneath the nodes they cross. NOTE: curve samples are in canvas space
-            // (vp.rect already includes panOffset/zoom), so occluders must be translated the same
-            // way or the occlusion is offset by the pan amount.
-            var canvasOffset = m_Graph.currentPanOffset / currentZoom;
-            var occluderRects = new List<Rect>();
-            foreach (var nv in m_NodeViews.Values)
-            {
-                if (nv?.node == null) continue;
-                if (IsNodeInCollapsedGroup(nv.node.id)) continue;
-                var nodeRect = nv.node.GetRect();
-                if (!nodeRect.Overlaps(visibleGridRect)) continue;
-                nodeRect.position += canvasOffset;
-                occluderRects.Add(nodeRect);
-            }
+            var visibleGridRect = GetVisibleGridRect();
 
             foreach (var edgeView in edgeViews.Values)
             {
@@ -88,10 +77,13 @@ namespace TaoTie.Inspector.Editor
                     continue;
                 }
 
-                //if both nodes are not visible -> do not draw the edge
+                //if both endpoint nodes are hidden AND neither redirects through a collapsed-group
+                //stub -> do not draw the edge
                 if (!nodeViews.TryGetValue(edgeView.inputNode.id, out var inNv) || !nodeViews.TryGetValue(edgeView.outputNode.id, out var outNv))
                     continue;
-                if (!inNv.isVisible && !outNv.isVisible)
+                bool inHidden = !inNv.isVisible && GetCollapsedGroupOfNode(edgeView.inputNode.id) == null;
+                bool outHidden = !outNv.isVisible && GetCollapsedGroupOfNode(edgeView.outputNode.id) == null;
+                if (inHidden && outHidden)
                 {
                     continue;
                 }
@@ -113,11 +105,11 @@ namespace TaoTie.Inspector.Editor
                 if (outNodeRect.yMax < visibleGridRect.yMin && inNodeRect.yMax < visibleGridRect.yMin) continue;
                 if (outNodeRect.yMin > visibleGridRect.yMax && inNodeRect.yMin > visibleGridRect.yMax) continue;
 
-                DrawEdgeCurve(edgeView, occluderRects);
+                DrawEdgeCurve(edgeView);
             }
         }
 
-        private void DrawEdgeCurve(EdgeView edge, List<Rect> occluderRects)
+        private void DrawEdgeCurve(EdgeView edge)
         {
             //connect
             m_ConnectionAlpha = 1f;
@@ -236,23 +228,41 @@ namespace TaoTie.Inspector.Editor
                 inputTan = edge.inputTangent;
             }
 
-            //Sample the curve into a cached array every frame (positions change when nodes are moved or
-            //folded, so a length-keyed cache would render stale geometry) and draw it with an
-            //anti-aliased connected polyline, skipping portions that fall inside a node body so
-            //edges render beneath overlapping nodes.
+            //Sample the curve into a cached array and cache it by signature. Positions change only when a
+            //node/pin moves, folds, or the canvas pans/zooms, so when the signature is unchanged the
+            //existing sample array stays valid and a full resample is skipped (idle repaints cost
+            //almost nothing). The curve is drawn at the bottom layer (below all node windows), so
+            //no occlusion splitting is ever needed.
             var edgePointCount = (int)(Vector2.Distance(outputPos, inputPos) * 3);
             if (edgePointCount < 2) edgePointCount = 2;
-            if (edge.bezierPoints == null || edge.bezierPoints.Length != edgePointCount)
+            bool curveOutdated = edge.bezierPoints == null ||
+                edge.bezierPoints.Length != edgePointCount ||
+                edge.curveCacheCount != edgePointCount ||
+                edge.curveCacheStart != outputPos ||
+                edge.curveCacheStartTan != outputTan ||
+                edge.curveCacheEndTan != inputTan ||
+                edge.curveCacheEnd != inputPos;
+            if (curveOutdated)
             {
-                edge.bezierPoints = new Vector3[edgePointCount];
+                if (edge.bezierPoints == null || edge.bezierPoints.Length != edgePointCount)
+                {
+                    edge.bezierPoints = new Vector3[edgePointCount];
+                }
+                for (int i = 0; i < edgePointCount; i++)
+                {
+                    float t = (float)i / (edgePointCount - 1);
+                    edge.bezierPoints[i] = SampleBezierPoint(outputPos, outputTan, inputTan, inputPos, t);
+                }
+                edge.curveCacheStart = outputPos;
+                edge.curveCacheStartTan = outputTan;
+                edge.curveCacheEndTan = inputTan;
+                edge.curveCacheEnd = inputPos;
+                edge.curveCacheCount = edgePointCount;
             }
-            for (int i = 0; i < edgePointCount; i++)
-            {
-                float t = (float)i / (edgePointCount - 1);
-                edge.bezierPoints[i] = SampleBezierPoint(outputPos, outputTan, inputTan, inputPos, t);
-            }
-            DrawOccludedPolyLine(edge.bezierPoints, occluderRects, m_ConnectionBackgroundColor, currentCurveWidth + 2);
-            DrawOccludedPolyLine(edge.bezierPoints, occluderRects, m_EdgeColor, currentCurveWidth);
+
+            // The whole curve is one continuous line; nodes drawn above it do the occluding.
+            DrawEdgeCurveFull(edge.bezierPoints, m_ConnectionBackgroundColor, currentCurveWidth + 2);
+            DrawEdgeCurveFull(edge.bezierPoints, m_EdgeColor, currentCurveWidth);
             //if the window does not have focus -> return (DO NOT PLAY ANIMATION)
             //if (!m_HasFocus) return;
             //if the mouse is not inside the window -> return (DO NOT PLAY ANIMATION)
@@ -296,69 +306,14 @@ namespace TaoTie.Inspector.Editor
             //make the dot a bit brighter
             m_DotColor = new Color(m_DotColor.r * 1.2f, m_DotColor.g * 1.2f, m_DotColor.b * 1.2f, m_DotColor.a);
 
-            if (!IsPointOccluded(m_DotPoint, occluderRects))
-                NodeColors.DrawDot(m_DotPoint, m_DotSize * 0.5f, m_DotColor);
+            NodeColors.DrawDot(m_DotPoint, m_DotSize * 0.5f, m_DotColor);
         }
 
-        private void DrawOccludedPolyLine(Vector3[] points, List<Rect> occluders, Color color, float width)
+        private void DrawEdgeCurveFull(Vector3[] points, Color color, float width)
         {
             if (points == null || points.Length < 2) return;
             Handles.color = color;
-            if (!AnyPointOccluded(points, occluders))
-            {
-                Handles.DrawAAPolyLine(width, points);
-                return;
-            }
-            int runStart = 0;
-            bool inRun = false;
-            for (int i = 0; i < points.Length; i++)
-            {
-                if (!IsPointOccluded(points[i], occluders))
-                {
-                    if (!inRun)
-                    {
-                        inRun = true;
-                        runStart = i;
-                    }
-                }
-                else if (inRun)
-                {
-                    DrawAAPolyLineRun(points, runStart, i - 1, width);
-                    inRun = false;
-                }
-            }
-            if (inRun) DrawAAPolyLineRun(points, runStart, points.Length - 1, width);
-        }
-
-        private void DrawAAPolyLineRun(Vector3[] points, int from, int to, float width)
-        {
-            int count = to - from + 1;
-            if (count < 2) return;
-            var run = new Vector3[count];
-            Array.Copy(points, from, run, 0, count);
-            Handles.DrawAAPolyLine(width, run);
-        }
-
-        private static bool AnyPointOccluded(Vector3[] points, List<Rect> occluders)
-        {
-            if (points == null || occluders == null || occluders.Count == 0) return false;
-            for (int j = 0; j < points.Length; j++)
-            {
-                for (int i = 0; i < occluders.Count; i++)
-                {
-                    if (occluders[i].Contains((Vector2)points[j])) return true;
-                }
-            }
-            return false;
-        }
-
-        private static bool IsPointOccluded(Vector3 point, List<Rect> occluders)
-        {
-            for (int i = 0; i < occluders.Count; i++)
-            {
-                if (occluders[i].Contains((Vector2)point)) return true;
-            }
-            return false;
+            Handles.DrawAAPolyLine(width, points);
         }
 
         private static Vector3 SampleBezierPoint(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, float t)
@@ -405,6 +360,9 @@ namespace TaoTie.Inspector.Editor
             }
             else
             {
+                // Expanded group boxes span all member nodes and can be huge; hide them entirely
+                // when the box is outside the viewport. Lightly cull off-screen boxes only.
+                if (!rect.Overlaps(GetVisibleGridRect())) return;
                 DrawExpandedGroup(group, rect);
             }
         }
@@ -764,17 +722,18 @@ namespace TaoTie.Inspector.Editor
         {
             BeginWindows();
             SyncNodeDrawOrder();
-            var visibleGridRect = new Rect(
-                -m_Graph.currentPanOffset.x / currentZoom,
-                -m_Graph.currentPanOffset.y / currentZoom,
-                m_ScaledGraphArea.width,
-                m_ScaledGraphArea.height);
+            var visibleGridRect = GetVisibleGridRect();
             var preLayout = new List<(NodeView view, float height, float width)>();
             foreach (var nodeView in m_NodeDrawOrder)
             {
                 if (nodeView?.node == null) continue;
-                if (IsNodeInCollapsedGroup(nodeView.node.id)) continue;
-                if (!nodeView.node.GetRect().Overlaps(visibleGridRect)) continue;
+                // Mark off-screen / collapsed-group nodes as hidden so edges drawn later in this
+                // pass, hover and hit-testing skip them entirely (they are not registered as GUI
+                // windows either, so their body is never rendered).
+                bool visible = !IsNodeInCollapsedGroup(nodeView.node.id) &&
+                               nodeView.node.GetRect().Overlaps(visibleGridRect);
+                nodeView.isVisible = visible;
+                if (!visible) continue;
                 preLayout.Add((nodeView, nodeView.node.GetHeight(), nodeView.node.GetWidth()));
                 nodeView.isInGroup = IsNodeInAnyGroup(nodeView.node.id);
                 nodeView.zoomedBeyondPortDrawThreshold = currentZoom <= 0.4f;
@@ -783,13 +742,16 @@ namespace TaoTie.Inspector.Editor
 
             // Pin Unity's internal window order to m_NodeDrawOrder (which is what the port-dot
             // occlusion assumes). Clicking/focusing a window raises it internally, which would
-            // otherwise desync the on-screen stacking from our occlusion computation.
-            foreach (var nodeView in m_NodeDrawOrder)
+            // otherwise desync the on-screen stacking from our occlusion computation. Skipped when
+            // the order list hasn't changed (idle repaints cost nothing here).
+            if (m_NodeOrderDirty)
             {
-                if (nodeView?.node == null) continue;
-                if (IsNodeInCollapsedGroup(nodeView.node.id)) continue;
-                if (!nodeView.node.GetRect().Overlaps(visibleGridRect)) continue;
-                GUI.BringWindowToFront(nodeView.windowId);
+                foreach (var nodeView in m_NodeDrawOrder)
+                {
+                    if (nodeView?.node == null || !nodeView.isVisible) continue;
+                    GUI.BringWindowToFront(nodeView.windowId);
+                }
+                m_NodeOrderDirty = false;
             }
 
             EndWindows();
@@ -826,21 +788,17 @@ namespace TaoTie.Inspector.Editor
         private void DrawPortsEdgePoints()
         {
             if (currentZoom <= 0.4f) return;
-            var visibleGridRect = new Rect(
-                -m_Graph.currentPanOffset.x / currentZoom,
-                -m_Graph.currentPanOffset.y / currentZoom,
-                m_ScaledGraphArea.width,
-                m_ScaledGraphArea.height);
+            var visibleGridRect = GetVisibleGridRect();
             // Node draw order (bottom -> top). GUI.Window stacking is pinned to this exact iteration
             // order every frame via GUI.BringWindowToFront in DrawNodes, so a port dot must NOT
             // render over a node drawn above it.
-            var nodeDrawOrder = new List<NodeView>();
+            m_PortNodeOrder.Clear();
             foreach (var nv in m_NodeDrawOrder)
             {
                 if (nv?.node == null) continue;
                 if (IsNodeInCollapsedGroup(nv.node.id)) continue;
                 if (!nv.node.GetRect().Overlaps(visibleGridRect)) continue;
-                nodeDrawOrder.Add(nv);
+                m_PortNodeOrder.Add(nv);
             }
             foreach (var port in ports.Values)
             {
@@ -849,7 +807,7 @@ namespace TaoTie.Inspector.Editor
                 var node = nv.node;
                 var portGridRect = new Rect(node.GetX(), node.GetY() + port.GetY(), port.GetWidth(), port.GetHeight());
                 if (!portGridRect.Overlaps(visibleGridRect)) continue;
-                DrawPortEdgePoints(port, nodeDrawOrder, nv);
+                DrawPortEdgePoints(port, m_PortNodeOrder, nv);
             }
         }
 

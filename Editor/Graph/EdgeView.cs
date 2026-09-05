@@ -24,6 +24,13 @@ namespace TaoTie.Inspector.Editor
         public Vector2 inputTangent = Vector2.zero;
         /// <summary> Cached Bezier points for animation, reused across frames to avoid per-frame allocation </summary>
         public Vector3[] bezierPoints;
+        /// <summary> Signature of the curve the bezierPoints array was sampled from. When all of these
+        /// match the current inputs the cached samples are still valid and a resample can be skipped. </summary>
+        public Vector2 curveCacheStart;
+        public Vector2 curveCacheStartTan;
+        public Vector2 curveCacheEndTan;
+        public Vector2 curveCacheEnd;
+        public int curveCacheCount;
         // public AnimBool ping = new AnimBool {speed = 0.6f};
         //TODO Edge Shader
         // /// <summary> Lightweight handles material </summary>

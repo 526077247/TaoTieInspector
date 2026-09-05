@@ -557,12 +557,15 @@ namespace TaoTie.Inspector.Editor
                 GUI.matrix = translation * scale * translation.inverse;
                 {
                     DrawGroups();
-                    // Draw nodes first: a NodeView's height/port positions are only final
+                    // Edges are drawn FIRST (bottom layer): any node body naturally covers the
+                    // parts of a curve that pass beneath it, so no per-frame occlusion splitting
+                    // is ever needed.
+                    DrawEdges();
+                    // Draw nodes: a NodeView's height/port positions are only final
                     // after its items are drawn. Rebuild points/curves right after, then draw
-                    // edges so they use the fresh geometry in this very pass (no frame lag).
+                    // ports so they use the fresh geometry in this very pass (no frame lag).
                     DrawNodes(graphViewArea);
                     RebuildPointsAfterDraw();
-                    DrawEdges();
                     DrawPortsEdgePoints();
                     DrawLineFromPortToPosition(m_ActivePort, Event.current.mousePosition);
                     DrawSelectionBox();
@@ -823,6 +826,7 @@ namespace TaoTie.Inspector.Editor
         /// <summary>Persistent bottom-to-top window draw order. Kept in sync with m_NodeViews;
         /// iterating it instead of m_NodeViews lets selected nodes be brought to the front (z-order).</summary>
         private readonly List<NodeView> m_NodeDrawOrder = new List<NodeView>();
+        private bool m_NodeOrderDirty = true;
 
         private void SyncNodeDrawOrder()
         {
@@ -834,6 +838,7 @@ namespace TaoTie.Inspector.Editor
                 if (!m_NodeViews.ContainsKey(v.node.id))
                 {
                     m_NodeDrawOrder.RemoveAt(i);
+                    m_NodeOrderDirty = true;
                 }
             }
             foreach (var nv in m_NodeViews.Values)
@@ -841,6 +846,7 @@ namespace TaoTie.Inspector.Editor
                 if (nv == null || nv.node == null) continue;
                 if (m_NodeDrawOrder.Contains(nv)) continue;
                 m_NodeDrawOrder.Add(nv);
+                m_NodeOrderDirty = true;
             }
         }
 
@@ -849,13 +855,18 @@ namespace TaoTie.Inspector.Editor
         {
             SyncNodeDrawOrder();
             if (nodes == null) return;
+            bool changed = false;
             foreach (var node in nodes)
             {
                 if (node == null) continue;
                 if (!m_NodeViews.TryGetValue(node.id, out var view) || view == null) continue;
+                if (m_NodeDrawOrder.Count > 0 && m_NodeDrawOrder[m_NodeDrawOrder.Count - 1] == view)
+                    continue;
                 m_NodeDrawOrder.Remove(view);
                 m_NodeDrawOrder.Add(view);
+                changed = true;
             }
+            if (changed) m_NodeOrderDirty = true;
         }
 
         private void CalculateAllPointRects()
