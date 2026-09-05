@@ -1056,6 +1056,10 @@ namespace TaoTie.Inspector.Editor
             // MouseDrag/MouseUp events arrive here instead of DrawNode.
             if (NodeView.s_IsResizingWidth)
             {
+                // When the GUI.Window content path already handled this event (DrawNode resize),
+                // do NOT apply the delta a second time — otherwise width grows at 2x on those frames.
+                if (current.type == EventType.Used) return;
+
                 if (current.type == EventType.MouseDrag)
                 {
                     foreach (var n in m_Graph.values)
@@ -1064,8 +1068,7 @@ namespace TaoTie.Inspector.Editor
                         {
                             float newWidth = n.GetWidth() + current.delta.x / currentZoom;
                             n.SetWidth(Mathf.Max(NodeView.BaseWidth, newWidth));
-                            m_PointsDirty = true;
-                            m_Dirty = true;
+                            InvalidatePoints();
                             break;
                         }
                     }
@@ -1130,6 +1133,7 @@ namespace TaoTie.Inspector.Editor
                     foreach (var n in groupNodes)
                         m_SelectedNodes.Add(n);
                     UpdateNodesSelectedState(m_SelectedNodes);
+                    BringNodesToFront(groupNodes);
                     PrepareToDragSelectedNodes(current.mousePosition);
                     m_Mode = GraphMode.Drag;
                     current.Use();
@@ -1145,6 +1149,7 @@ namespace TaoTie.Inspector.Editor
                     foreach (var n in groupNodes)
                         m_SelectedNodes.Add(n);
                     UpdateNodesSelectedState(m_SelectedNodes);
+                    BringNodesToFront(groupNodes);
                     PrepareToDragSelectedNodes(current.mousePosition);
                     m_Mode = GraphMode.Drag;
                     current.Use();
@@ -1450,6 +1455,9 @@ namespace TaoTie.Inspector.Editor
 
             //update the currently selected nodes visual (normal style or selected style)
             UpdateNodesSelectedState(m_SelectedNodes);
+
+            //selected nodes are drawn on top: move them to the front of the window draw order
+            BringNodesToFront(m_SelectedNodes);
         }
 
         private bool m_DragUndoPushed;

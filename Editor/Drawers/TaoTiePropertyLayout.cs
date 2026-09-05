@@ -197,7 +197,7 @@ namespace TaoTie.Inspector.Editor
                             : 100f;
 
                         Rect foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
-                        float buttonW = 55f;
+                        float buttonW = GuiSizing.SetNullButtonWidth();
                         float buttonX = foldRect.xMax - buttonW - 2f;
                         Rect buttonRect = new Rect(buttonX, foldRect.y, buttonW, foldRect.height);
                         Rect actualFoldRect = new Rect(foldRect.x, foldRect.y, buttonX - foldRect.x - 4f, foldRect.height);
@@ -1501,7 +1501,7 @@ namespace TaoTie.Inspector.Editor
                 return true;
             }
 
-            const float buttonW = 55f;
+            float buttonW = GuiSizing.SetNullButtonWidth();
             Rect foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
             Rect buttonRect = new Rect(foldRect.xMax - buttonW - 2f, foldRect.y, buttonW, foldRect.height);
             Rect actualFoldRect = new Rect(foldRect.x, foldRect.y,

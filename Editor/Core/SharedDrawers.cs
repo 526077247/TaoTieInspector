@@ -105,6 +105,17 @@ namespace TaoTie.Inspector.Editor
         }
     }
 
+    /// <summary>Measured width (px) of GUI content, so buttons adapt to the active skin / editor font.</summary>
+    public static class GuiSizing
+    {
+        private static readonly GUIContent s_SetNull = new GUIContent("SetNull");
+
+        public static float SetNullButtonWidth()
+        {
+            return GUI.skin.button.CalcSize(s_SetNull).x + 4f;
+        }
+    }
+
     /// <summary>Shared no-arg method invocation via reflection.</summary>
     public static class ReflectionMethodInvoker
     {

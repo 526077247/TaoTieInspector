@@ -586,7 +586,7 @@ namespace TaoTie.Inspector.Editor
                 float labelW = EditorStyles.foldout.CalcSize(foldoutLabel).x + 18f;
 
                 Rect foldRect = EditorGUILayout.GetControlRect(true, EditorGUIUtility.singleLineHeight);
-                float buttonW = 55f;
+                float buttonW = GuiSizing.SetNullButtonWidth();
                 float buttonX = foldRect.xMax - buttonW - 2f;
                 Rect buttonRect = new Rect(buttonX, foldRect.y, buttonW, foldRect.height);
                 Rect actualFoldRect = new Rect(foldRect.x, foldRect.y, buttonX - foldRect.x - 4f, foldRect.height);
@@ -1779,7 +1779,7 @@ namespace TaoTie.Inspector.Editor
             string tooltip = showName?.tooltip;
             float indexColW = 28f;
             float deleteColW = 22f;
-            float setNullColW = 50f;
+            float setNullColW = GuiSizing.SetNullButtonWidth();
             float availableWidth = s_AvailableWidth > 0 ? s_AvailableWidth : EditorGUIUtility.currentViewWidth - 40f;
 
             var boxStyle = new GUIStyle(GUI.skin.box) { padding = new RectOffset(2, 2, 2, 2) };

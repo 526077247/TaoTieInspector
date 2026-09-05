@@ -610,7 +610,7 @@ namespace TaoTie.Inspector.Editor
                     float zoom = m_Graph.currentZoom;
                     float newWidth = m_Node.GetWidth() + ev.delta.x / zoom;
                     m_Node.SetWidth(Mathf.Max(BaseWidth, newWidth));
-                    m_graphWindow.Repaint();
+                    m_graphWindow.InvalidatePoints();
                     ev.Use();
                 }
                 else if (ev != null && ev.type == EventType.MouseUp && ev.button == 0)
