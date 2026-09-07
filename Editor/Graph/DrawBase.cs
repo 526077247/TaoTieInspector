@@ -340,6 +340,10 @@ namespace TaoTie.Inspector.Editor
 
             if (member is FieldInfo field)
             {
+                // Field copy/paste — remember the top of this field block for the right-click menu.
+                bool _fieldMenuWorthy = FieldCopyPaste.ShouldOfferMenu(field.FieldType);
+                float _fieldMenuStartY = _fieldMenuWorthy ? GUILayoutUtility.GetLastRect().yMax : -1f;
+
                 OnValueChangedAttribute attribute = null;
                 object value = null;
                 int collectionCount = -1;
@@ -381,6 +385,24 @@ namespace TaoTie.Inspector.Editor
                     // For async callbacks (e.g. ValueDropdown menu), store the value so we can
                     // detect the change on the next frame when the menu callback fires.
                     onValueChangedTracker[(field, obj.GetHashCode())] = newValue;
+                }
+
+                // Field copy/paste context menu (object / array / dictionary fields)
+                if (_fieldMenuWorthy)
+                {
+                    float _fieldMenuEndY = GUILayoutUtility.GetLastRect().yMax;
+                    if (_fieldMenuEndY > _fieldMenuStartY)
+                    {
+                        var _fieldMenuRect = new Rect(0f, _fieldMenuStartY,
+                            EditorGUIUtility.currentViewWidth, _fieldMenuEndY - _fieldMenuStartY);
+                        FieldCopyPaste.ShowFieldContextMenu(
+                            _fieldMenuRect,
+                            FieldCopyPaste.CanPasteInto(field.FieldType),
+                            FieldCopyPaste.CanAppendInto(field.FieldType),
+                            () => FieldCopyPaste.CopyValue(field.GetValue(obj)),
+                            () => FieldCopyPaste.PasteIntoField(field, obj),
+                            () => FieldCopyPaste.AppendIntoField(field, obj));
+                    }
                 }
 
             }

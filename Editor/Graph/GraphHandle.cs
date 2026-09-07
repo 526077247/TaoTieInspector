@@ -311,6 +311,10 @@ namespace TaoTie.Inspector.Editor
             if (current.type != EventType.MouseUp) return;
             if (current.button != 1) return;
 
+            // A field Copy/Paste menu (DrawBase / property layout) already handled this right-click
+            // on its ContextClick pass — don't stack the node/canvas context menu on top of it.
+            if (FieldCopyPaste.ConsumeSuppressGraphMenu()) return;
+
             if (m_CurrentHoveredPort != null)
             {
                 if (m_Graph == null || m_CurrentHoveredPort.nodeId == null || !nodeViews.ContainsKey(m_CurrentHoveredPort.nodeId))

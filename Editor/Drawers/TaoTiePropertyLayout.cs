@@ -19,6 +19,22 @@ namespace TaoTie.Inspector.Editor
         private static string _draggingTablePath;
         private static int _draggingColumnIndex = -1;
 
+        // Set by field copy/paste when a paste changed [SerializeReference] / array structure,
+        // forcing the editor to rebuild its cached grouped entries on the next paint.
+        private static bool s_RequestInspectorRefresh;
+
+        internal static void RequestInspectorRefresh()
+        {
+            s_RequestInspectorRefresh = true;
+        }
+
+        internal static bool ConsumeInspectorRefreshRequest()
+        {
+            bool v = s_RequestInspectorRefresh;
+            s_RequestInspectorRefresh = false;
+            return v;
+        }
+
         // Performance: max rows to render before requiring "Show All" expansion
         private const int k_MaxVisibleRows = 50;
 
@@ -148,6 +164,11 @@ namespace TaoTie.Inspector.Editor
 
             // Draw the property
             bool changed = false;
+
+            // Field copy/paste — remember the top of this field block for the right-click menu.
+            float _menuStartY = -1f;
+            if (FieldCopyPaste.ShouldOfferMenu(entry.Property))
+                _menuStartY = GUILayoutUtility.GetLastRect().yMax;
 
             // 顶层 [SerializeReference] 字段（StateMachineBehaviour）→ Odin 同款面板：
             // 普通 Inspector 里编辑侧反射 managed ref 子树并按 SMB 分组引擎绘制，无字段级钩子。
@@ -478,6 +499,24 @@ namespace TaoTie.Inspector.Editor
             // Space after
             if (entry.Space != null && entry.Space.SpaceAfter > 0)
                 GUILayout.Space(entry.Space.SpaceAfter);
+
+            // Field copy/paste context menu (object / array / [SerializeReference] fields)
+            if (_menuStartY >= 0f)
+            {
+                float _menuEndY = GUILayoutUtility.GetLastRect().yMax;
+                if (_menuEndY > _menuStartY)
+                {
+                    var _menuDeclaredType = FieldCopyPaste.ResolveDeclaredType(entry.Property);
+                    var _menuRect = new Rect(0f, _menuStartY, EditorGUIUtility.currentViewWidth, _menuEndY - _menuStartY);
+                    FieldCopyPaste.ShowFieldContextMenu(
+                        _menuRect,
+                        FieldCopyPaste.CanPasteInto(_menuDeclaredType),
+                        FieldCopyPaste.CanAppendInto(_menuDeclaredType),
+                        () => FieldCopyPaste.CopyFromProperty(entry.Property),
+                        () => FieldCopyPaste.PasteIntoProperty(entry.Property),
+                        () => FieldCopyPaste.AppendIntoProperty(entry.Property));
+                }
+            }
         }
 
         private static readonly Dictionary<string, GUIContent> s_LabelCache = new();
@@ -559,6 +598,10 @@ namespace TaoTie.Inspector.Editor
             if (entry.DisableInEditorMode != null && !EditorApplication.isPlaying) enabled = false;
             GUI.enabled = wasEnabled && enabled;
 
+            // Field copy/paste context menu (unserialized reflection fields: Dictionary, ...)
+            bool _menuWorthy = field != null && FieldCopyPaste.ShouldOfferMenu(field.FieldType);
+            float _menuStartY = _menuWorthy ? GUILayoutUtility.GetLastRect().yMax : -1f;
+
             DrawBase.SetFoldoutXOffset(14f);
             if (s_DrawFieldInspectorMethod != null)
             {
@@ -569,6 +612,24 @@ namespace TaoTie.Inspector.Editor
             }
 
             GUI.enabled = wasEnabled;
+
+            if (_menuWorthy)
+            {
+                float _menuEndY = GUILayoutUtility.GetLastRect().yMax;
+                if (_menuEndY > _menuStartY)
+                {
+                    var _menuRect = new Rect(0f, _menuStartY, EditorGUIUtility.currentViewWidth, _menuEndY - _menuStartY);
+                    var capturedField = field;
+                    var capturedObj = obj;
+                    FieldCopyPaste.ShowFieldContextMenu(
+                        _menuRect,
+                        FieldCopyPaste.CanPasteInto(field.FieldType),
+                        FieldCopyPaste.CanAppendInto(field.FieldType),
+                        () => FieldCopyPaste.CopyValue(capturedField.GetValue(capturedObj)),
+                        () => FieldCopyPaste.PasteIntoField(capturedField, capturedObj),
+                        () => FieldCopyPaste.AppendIntoField(capturedField, capturedObj));
+                }
+            }
 
             // Space after
             if (entry.Space != null && entry.Space.SpaceAfter > 0)

@@ -82,6 +82,14 @@ namespace TaoTie.Inspector.Editor
 
             serializedObject.Update();
 
+            // Field copy/paste may alter [SerializeReference] / array structure — rebuild cached entries
+            if (TaoTiePropertyLayout.ConsumeInspectorRefreshRequest())
+            {
+                processor.ClearCache();
+                cachedMergedEntries = null;
+                cachedGroupEntries = null;
+            }
+
             // Rebuild entries every frame when there are pending managed reference changes
             if (TaoTiePropertyLayout.HasPendingManagedReferenceChanges())
             {
