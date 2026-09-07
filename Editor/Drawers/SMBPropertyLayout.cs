@@ -402,7 +402,7 @@ namespace TaoTie.Inspector.Editor
             SessionState.SetBool("TaoTie_SMB_Expanded_" + p.propertyPath, exp);
             float labelW = EditorStyles.foldout.CalcSize(label).x + 18f;
             var typeRect = new Rect(head.x + labelW, head.y, Mathf.Max(0f, head.width - labelW), head.height);
-            EditorGUI.LabelField(typeRect, LabelResolver.GetTypeLabel(val.GetType()), EditorStyles.boldLabel);
+            EditorGUI.LabelField(typeRect, LabelResolver.GetTypeGUIContent(val.GetType()), EditorStyles.boldLabel);
             y = head.yMax + VSpacing;
             if (exp)
                 y = SMBGroupLayout.DrawManagedChildren(area, p, y, head.x + FoldIndent);

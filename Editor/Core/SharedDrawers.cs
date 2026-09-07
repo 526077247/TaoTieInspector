@@ -26,6 +26,21 @@ namespace TaoTie.Inspector.Editor
             return result;
         }
 
+        /// <summary>Get type tooltip: Tooltip attribute text if present, otherwise null.</summary>
+        public static string GetTypeTooltip(Type type)
+        {
+            if (type == null) return null;
+            var attr = type.GetCustomAttributes(typeof(TooltipAttribute), false);
+            return attr.Length > 0 ? ((TooltipAttribute)attr[0]).tooltip : null;
+        }
+
+        /// <summary>Get type label as GUIContent (LabelText/type name + type Tooltip).</summary>
+        public static GUIContent GetTypeGUIContent(Type type)
+        {
+            if (type == null) return new GUIContent("null");
+            return new GUIContent(GetTypeLabel(type), GetTypeTooltip(type));
+        }
+
         /// <summary>Get member display name: LabelText if present, otherwise NicifyVariableName.</summary>
         public static string GetMemberLabel(MemberInfo member)
         {

@@ -597,10 +597,10 @@ namespace TaoTie.Inspector.Editor
                     return;
                 }
 
-                // Get display name for the type (LabelText if present, otherwise type name)
+                // Get display name for the type (LabelText if present, otherwise type name) + type Tooltip
                 var valueType = value.GetType();
-                var typeLabelAttr = valueType.GetCustomAttributes(typeof(LabelTextAttribute), false);
-                string typeDisplayName = LabelResolver.GetTypeLabel(valueType);
+                GUIContent typeContent = LabelResolver.GetTypeGUIContent(valueType);
+                string typeDisplayName = typeContent.text;
 
                 // Use instance field for foldout state — DrawBase is reused across frames via DrawReflectionProperty
                 bool foldout = foldoutState.Contains((field, value?.GetHashCode() ?? 0));
@@ -624,13 +624,13 @@ namespace TaoTie.Inspector.Editor
                 // Truncate foldout label if it would overlap the type label or SetNull button
                 float maxFoldLabelW = actualFoldRect.width - 15f;
                 string truncatedFoldText = TruncateLabel(foldoutLabel.text, maxFoldLabelW);
-                foldout = EditorGUI.Foldout(actualFoldRect, foldout, truncatedFoldText, true);
+                foldout = EditorGUI.Foldout(actualFoldRect, foldout, new GUIContent(truncatedFoldText, foldoutLabel.tooltip), true);
                 // Truncate type display name if it would overlap the SetNull button
                 if (typeRect.width > 0)
                 {
                     typeDisplayName = TruncateLabel(typeDisplayName, typeRect.width);
                 }
-                EditorGUI.LabelField(typeRect, typeDisplayName, EditorStyles.boldLabel);
+                EditorGUI.LabelField(typeRect, new GUIContent(typeDisplayName, typeContent.tooltip), EditorStyles.boldLabel);
 
                 if (setNullClicked)
                 {
@@ -1945,10 +1945,11 @@ namespace TaoTie.Inspector.Editor
                             Rect snRect = new Rect(delRect.x - setNullColW - 2f, rowRect.y, setNullColW, rowRect.height);
                             // Foldout fills the space between index and SetNull
                             Rect subFoldRect = new Rect(x, rowRect.y, snRect.x - x - 2f, rowRect.height);
-                            string foldLabel = GetShowName(item.GetType()).text;
+                            GUIContent foldContent = GetShowName(item.GetType());
+                            string foldLabel = foldContent.text;
                             // Truncate label to fit foldout rect (account for foldout arrow ~13px)
                             foldLabel = TruncateLabel(foldLabel, subFoldRect.width - 15f);
-                            subFold = EditorGUI.Foldout(subFoldRect, subFoldState, foldLabel);
+                            subFold = EditorGUI.Foldout(subFoldRect, subFoldState, new GUIContent(foldLabel, foldContent.tooltip));
                             if (GUI.Button(snRect, "SetNull"))
                             {
                                 list[i] = null;
@@ -2949,19 +2950,6 @@ namespace TaoTie.Inspector.Editor
 
         protected virtual GUIContent GetShowName(MemberInfo member, object value = null)
         {
-            if (value != null && member is FieldInfo fieldInfo)
-            {
-                var valueType = value.GetType();
-                if (valueType != fieldInfo.FieldType && valueType.IsClass && !valueType.IsArray &&
-                    valueType != stringType && valueType != objectType
-                    && valueType != dicType && valueType != listType && !valueType.IsGenericType)
-                {
-                    string typeLabel = GetShowNameString(valueType);
-                    string tip2 = GetCachedAttr<TooltipAttribute>(member) is TooltipAttribute ta ? ta.tooltip : null;
-                    return GetCachedGUIContent(typeLabel, tip2 ?? typeLabel);
-                }
-            }
-
             string tip = GetCachedAttr<TooltipAttribute>(member) is TooltipAttribute tooltipAttr ? tooltipAttr.tooltip : null;
             string showname = GetCachedAttr<LabelTextAttribute>(member) is LabelTextAttribute labelTextAttr
                 ? labelTextAttr.Text

@@ -294,7 +294,7 @@ namespace TaoTie.Inspector.Editor
                     // not null → no SetNull button (HideReferenceObjectPicker hides picker and clear)
                     // Foldout + label + type name on same line
                     var refType = entry.Property.managedReferenceValue.GetType();
-                    string typeName = LabelResolver.GetTypeLabel(refType);
+                    GUIContent typeContent = LabelResolver.GetTypeGUIContent(refType);
 
                     bool pendingClear = _pendingManagedReferenceClears.Contains(entry.Property.propertyPath);
                     if (pendingClear)
@@ -316,7 +316,7 @@ namespace TaoTie.Inspector.Editor
 
                         Rect typeRect = new Rect(foldRect.x + labelW, foldRect.y,
                             EditorGUIUtility.currentViewWidth - labelW - 20f, foldRect.height);
-                        EditorGUI.LabelField(typeRect, typeName, EditorStyles.boldLabel);
+                        EditorGUI.LabelField(typeRect, typeContent, EditorStyles.boldLabel);
 
                         SessionState.SetBool(foldKey, fold);
 
@@ -1577,7 +1577,7 @@ namespace TaoTie.Inspector.Editor
             float labelW = EditorStyles.foldout.CalcSize(label).x + 18f;
             var typeRect = new Rect(foldRect.x + labelW, foldRect.y,
                 Mathf.Max(0f, buttonRect.x - (foldRect.x + labelW) - 4f), foldRect.height);
-            EditorGUI.LabelField(typeRect, LabelResolver.GetTypeLabel(refType), EditorStyles.boldLabel);
+            EditorGUI.LabelField(typeRect, LabelResolver.GetTypeGUIContent(refType), EditorStyles.boldLabel);
 
             if (setNullClicked)
             {
