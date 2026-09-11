@@ -168,7 +168,12 @@ namespace TaoTie.Inspector.Editor
             // Field copy/paste — remember the top of this field block for the right-click menu.
             float _menuStartY = -1f;
             if (FieldCopyPaste.ShouldOfferMenu(entry.Property))
+            {
+                // GetLastRect() errors as the first control in a newly-begun GUI group;
+                // insert a zero-size marker to establish a valid layout context.
+                GUILayoutUtility.GetRect(0, 0);
                 _menuStartY = GUILayoutUtility.GetLastRect().yMax;
+            }
 
             // 顶层 [SerializeReference] 字段（StateMachineBehaviour）→ Odin 同款面板：
             // 普通 Inspector 里编辑侧反射 managed ref 子树并按 SMB 分组引擎绘制，无字段级钩子。
@@ -600,7 +605,14 @@ namespace TaoTie.Inspector.Editor
 
             // Field copy/paste context menu (unserialized reflection fields: Dictionary, ...)
             bool _menuWorthy = field != null && FieldCopyPaste.ShouldOfferMenu(field.FieldType);
-            float _menuStartY = _menuWorthy ? GUILayoutUtility.GetLastRect().yMax : -1f;
+            float _menuStartY = -1f;
+            if (_menuWorthy)
+            {
+                // GetLastRect() errors as the first control in a newly-begun GUI group;
+                // insert a zero-size marker to establish a valid layout context.
+                GUILayoutUtility.GetRect(0, 0);
+                _menuStartY = GUILayoutUtility.GetLastRect().yMax;
+            }
 
             DrawBase.SetFoldoutXOffset(14f);
             if (s_DrawFieldInspectorMethod != null)

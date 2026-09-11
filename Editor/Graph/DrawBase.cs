@@ -342,7 +342,14 @@ namespace TaoTie.Inspector.Editor
             {
                 // Field copy/paste — remember the top of this field block for the right-click menu.
                 bool _fieldMenuWorthy = FieldCopyPaste.ShouldOfferMenu(field.FieldType);
-                float _fieldMenuStartY = _fieldMenuWorthy ? GUILayoutUtility.GetLastRect().yMax : -1f;
+                float _fieldMenuStartY = -1f;
+                if (_fieldMenuWorthy)
+                {
+                    // GetLastRect() errors as the first control in a newly-begun GUI group;
+                    // insert a zero-size marker to establish a valid layout context.
+                    GUILayoutUtility.GetRect(0, 0);
+                    _fieldMenuStartY = GUILayoutUtility.GetLastRect().yMax;
+                }
 
                 OnValueChangedAttribute attribute = null;
                 object value = null;
