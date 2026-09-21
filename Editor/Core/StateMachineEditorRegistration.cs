@@ -43,8 +43,6 @@ namespace TaoTie.Inspector.Editor
             // subsequent editor-table rebuild, so the delayCall pass must re-run this. ResetCustomEditors
             // makes re-injection idempotent, so running it from both passes is safe.
             var smbType = typeof(UnityEngine.StateMachineBehaviour);
-            if (smbType == null) return;
-
             try
             {
                 var types = TypeCache.GetTypesDerivedFrom(smbType);
@@ -59,10 +57,6 @@ namespace TaoTie.Inspector.Editor
                     Type t = types[i];
                     if (t.IsAbstract || t.IsInterface || t.IsGenericTypeDefinition) continue;
                     CustomEditorUtility.RegisterCustomEditor(t, typeof(TaoTieEditor), false, false);
-                }
-                if (CustomEditorUtility.IsValid)
-                {
-                    Debug.Log($"[TaoTie.Inspector] Registered TaoTieEditor for {types.Count} StateMachineBehaviour subtype(s).");
                 }
             }
             catch (Exception e)
