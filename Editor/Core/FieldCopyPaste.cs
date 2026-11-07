@@ -280,6 +280,40 @@ namespace TaoTie.Inspector.Editor
         }
 
         /// <summary>
+        /// Enum 属性该不该用 longValue 写。判据按可靠性排序：
+        /// 1) 目标字段的声明类型 —— 空值、跨类型粘贴也能判对，是唯一权威来源；
+        /// 2) 来源值自身的类型 —— 粘贴值按复制时的运行时类型反序列化，通常就是目标枚举类型；
+        /// 3) 数值本身超出 int 范围 —— 兜底，此时只能走 longValue。
+        /// 三条都不成立时维持原来的 intValue 路径，普通枚举行为完全不变。
+        /// </summary>
+        private static bool IsLongBackedEnum(SerializedProperty prop, object value)
+        {
+            var declared = ResolveDeclaredType(prop);
+            if (declared != null && declared.IsEnum)
+                return NeedsLongStorage(declared);
+
+            if (value is Enum boxed)
+                return NeedsLongStorage(boxed.GetType());
+
+            if (value == null) return false;
+            try
+            {
+                long raw = Convert.ToInt64(value);
+                return raw > int.MaxValue || raw < int.MinValue;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static bool NeedsLongStorage(Type enumType)
+        {
+            Type underlying = Enum.GetUnderlyingType(enumType);
+            return underlying == typeof(long) || underlying == typeof(ulong);
+        }
+
+        /// <summary>
         /// Write a runtime value into a SerializedProperty with full coverage of leaf types,
         /// Generic (nested serializable classes), arrays/lists and ManagedReference.
         /// </summary>
@@ -319,7 +353,13 @@ namespace TaoTie.Inspector.Editor
                     prop.stringValue = (string)value;
                     return true;
                 case SerializedPropertyType.Enum:
-                    prop.intValue = Convert.ToInt32(value);
+                    // 底层为 long 的位标记枚举（如 GameplayTags）必须走 longValue：
+                    // intValue 只有 32 位，Convert.ToInt32 对超范围的值还会抛 OverflowException，
+                    // 被外层 catch 一吞就变成"粘贴没反应"，配置位静默丢失。
+                    if (IsLongBackedEnum(prop, value))
+                        prop.longValue = Convert.ToInt64(value);
+                    else
+                        prop.intValue = Convert.ToInt32(value);
                     return true;
                 case SerializedPropertyType.ObjectReference:
                     prop.objectReferenceValue = value as UnityEngine.Object;

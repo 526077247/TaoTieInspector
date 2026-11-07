@@ -59,7 +59,10 @@ namespace TaoTie.Inspector.Editor
                     bool isActive;
                     if (isFlags)
                     {
-                        long currentVal = property.enumValueFlag;
+                        // 必须走 longValue：enumValueFlag 是 int，
+                        // 底层为 long 的位标记枚举（如 GameplayTags）在 bit 32 以上会被静默截断，
+                        // 表现为"点了没反应"或"点了别的位也一起亮"，且不报任何错。
+                        long currentVal = property.longValue;
                         long flagVal = Convert.ToInt64(values[i]);
                         isActive = (currentVal & flagVal) == flagVal && flagVal != 0;
                         if (flagVal == 0)
@@ -75,19 +78,19 @@ namespace TaoTie.Inspector.Editor
                     {
                         if (isFlags)
                         {
-                            long currentVal = property.enumValueFlag;
+                            long currentVal = property.longValue;
                             long flagVal = Convert.ToInt64(values[i]);
                             if (flagVal == 0)
                             {
-                                property.enumValueFlag = 0;
+                                property.longValue = 0;
                             }
                             else if (newActive)
                             {
-                                property.enumValueFlag = (int)(currentVal | flagVal);
+                                property.longValue = currentVal | flagVal;
                             }
                             else
                             {
-                                property.enumValueFlag = (int)(currentVal & ~flagVal);
+                                property.longValue = currentVal & ~flagVal;
                             }
                         }
                         else
